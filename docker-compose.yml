@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: dps
+      POSTGRES_USER: dps
+      POSTGRES_PASSWORD: change-this-in-production
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dps -d dps"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    environment:
+      ENVIRONMENT: development
+      SECRET_KEY: replace-with-a-long-random-secret
+      DATABASE_URL: postgresql+asyncpg://dps:change-this-in-production@postgres:5432/dps
+      STORAGE_ROOT: /data/storage
+      DEFAULT_ADMIN_PASSWORD: change-me-immediately
+      TRANSCRIPTION_PROVIDER: ${TRANSCRIPTION_PROVIDER:-groq}
+      SUMMARIZATION_PROVIDER: ${SUMMARIZATION_PROVIDER:-groq}
+      FORM_EXTRACTION_PROVIDER: ${FORM_EXTRACTION_PROVIDER:-groq}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_TRANSCRIPTION_MODEL: ${GROQ_TRANSCRIPTION_MODEL:-whisper-large-v3}
+      GROQ_SUMMARY_MODEL: ${GROQ_SUMMARY_MODEL:-openai/gpt-oss-120b}
+      GROQ_FORM_MODEL: ${GROQ_FORM_MODEL:-qwen/qwen3.8-27b}
+      CORS_ORIGINS: http://localhost:5173
+      METRICS_ENABLED: "true"
+    volumes:
+      - audio_data:/data/storage
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.workers.runner"]
+    environment:
+      ENVIRONMENT: development
+      SECRET_KEY: replace-with-a-long-random-secret
+      DATABASE_URL: postgresql+asyncpg://dps:change-this-in-production@postgres:5432/dps
+      STORAGE_ROOT: /data/storage
+      DEFAULT_ADMIN_PASSWORD: change-me-immediately
+      TRANSCRIPTION_PROVIDER: ${TRANSCRIPTION_PROVIDER:-groq}
+      SUMMARIZATION_PROVIDER: ${SUMMARIZATION_PROVIDER:-groq}
+      FORM_EXTRACTION_PROVIDER: ${FORM_EXTRACTION_PROVIDER:-groq}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_TRANSCRIPTION_MODEL: ${GROQ_TRANSCRIPTION_MODEL:-whisper-large-v3}
+      GROQ_SUMMARY_MODEL: ${GROQ_SUMMARY_MODEL:-openai/gpt-oss-120b}
+      GROQ_FORM_MODEL: ${GROQ_FORM_MODEL:-qwen/qwen3.8-27b}
+    volumes:
+      - audio_data:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  audio_data:

@@ -1,0 +1,37 @@
+.env
+*.db
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+/storage/
+backend/storage/
+test_storage/
+backend/.venv/
+*.pyc
+node_modules/
+dist/
+model_cache/
+.env.local
+.env.*.local
+.next/
+*.tsbuildinfo
+.DS_Store
+coverage/
+playwright-report/
+test-results/
+# Local runtime artefacts
+backend/.e2e/
+.logs-*.txt
+samples/synthetic/*.wav
+samples/synthetic/*.webm
+frontend/test-results/
+frontend/playwright-report/
+*.egg-info/
+
+# Never commit real environment files
+backend/.env
+backend/.env.*
+!.env.example
+!backend/.env.example
