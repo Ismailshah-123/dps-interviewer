@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     groq_form_max_tokens: int = 8192
     groq_max_retries: int = 3
     groq_retry_backoff_seconds: int = 5
-    default_admin_email: str = "admin@dps.example.com"
+    default_admin_email: str = "admin@dps.edu.pk"
     default_admin_password: str = "change-me-immediately"
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
     auto_create_schema: bool = True
