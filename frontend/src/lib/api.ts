@@ -1,3 +1,4 @@
+
 import type {
   AdminJob,
   AppMeta,
@@ -22,7 +23,11 @@ import type {
   User,
 } from './types'
 
-const BASE = '/api/v1'
+const API_ORIGIN = (
+  import.meta.env.VITE_API_BASE_URL ?? ''
+).replace(/\/+$/, '')
+
+const BASE = `${API_ORIGIN}/api/v1`
 
 /**
  * Session model: the refresh token lives in an HttpOnly, SameSite=Strict cookie set by the
@@ -91,7 +96,7 @@ async function toApiError(res: Response): Promise<ApiError> {
 export async function refreshAccessToken(): Promise<boolean> {
   refreshing ??= (async () => {
     try {
-      const res = await fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'same-origin' })
+      const res = await fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
       if (!res.ok) {
         accessToken = null
         return false
@@ -141,7 +146,7 @@ async function send(path: string, options: RequestOptions, retry = true): Promis
     method: options.method ?? 'GET',
     headers,
     body,
-    credentials: 'same-origin',
+    credentials: 'include',
   })
   if (res.status === 401 && retry && !path.startsWith('/auth/')) {
     if (await refreshAccessToken()) return send(path, options, false)
@@ -167,6 +172,7 @@ export function uploadWithProgress<T>(path: string, form: FormData, onProgress: 
     new Promise<T>((resolve, reject) => {
       const xhr = new XMLHttpRequest()
       xhr.open('POST', buildUrl(path))
+      xhr.withCredentials = true
       if (accessToken) xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`)
       xhr.setRequestHeader('X-Correlation-ID', crypto.randomUUID())
       xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
@@ -204,7 +210,7 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
-      credentials: 'same-origin',
+      credentials: 'include',
     })
     if (!res.ok) {
       const err = await toApiError(res)
@@ -215,7 +221,7 @@ export const api = {
   },
   async logout() {
     try {
-      await fetch(`${BASE}/auth/logout`, { method: 'POST', credentials: 'same-origin' })
+      await fetch(`${BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
     } finally {
       accessToken = null
     }
@@ -275,7 +281,9 @@ export const api = {
   healthReady: () => request<{ status: string; checks: Record<string, string> }>('/health/ready'),
   healthAi: async () => {
     // 503 is an expected "degraded" answer here, so read the body either way.
-    const res = await fetch(`${BASE}/health/ai`)
+    const res = await fetch(`${BASE}/health/ai`, {
+      credentials: 'include',
+    })
     const body = await res.json()
     return (res.ok ? body : body.detail) as { status: string; checks: Record<string, { status: string; provider?: string; model?: string; error?: string }> }
   },
