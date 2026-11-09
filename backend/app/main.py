@@ -49,19 +49,60 @@ async def seed_defaults():
         template.active = True
         await db.commit()
 
+async def run_inline_worker():
+    """Run the PostgreSQL-backed job queue in this API process for small demos."""
+    logger = logging.getLogger(__name__)
+
+    from app.workers.processor import run_pending_jobs_once
+
+    logger.info("inline_worker_started", extra={"event": "worker.started"})
+
+    while True:
+        try:
+            await run_pending_jobs_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                "inline_worker_iteration_failed",
+                extra={"event": "worker.iteration_failed"},
+            )
+
+        await asyncio.sleep(max(settings.worker_poll_seconds, 0.5))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.db.base import Base
     import app.models.models  # noqa
+
+    worker_task = None
+
     if settings.auto_create_schema:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-    # Seeding is safe after migrations and is independent from schema creation.
-    # This allows production/demo deployments to use Alembic while still creating
-    # the initial administrator and demo template when they are absent.
+
+    # Run seeding after migrations/schema initialization.
     await seed_defaults()
-    yield
-    await engine.dispose()
+
+    if settings.inline_worker_enabled:
+        worker_task = asyncio.create_task(
+            run_inline_worker(),
+            name="dps-inline-worker",
+        )
+        logging.getLogger(__name__).info(
+            "inline_worker_enabled",
+            extra={"event": "worker.inline_enabled"},
+        )
+
+    try:
+        yield
+    finally:
+        if worker_task is not None:
+            worker_task.cancel()
+            await asyncio.gather(worker_task, return_exceptions=True)
+
+        await engine.dispose()
 
 app = FastAPI(title=settings.app_name, version="0.18.0", docs_url="/docs", redoc_url="/redoc", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True, allow_methods=["GET","POST","PATCH","PUT","DELETE","OPTIONS"], allow_headers=["Authorization","Content-Type","X-Correlation-ID"])
