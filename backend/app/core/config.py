@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     db_pool_timeout_seconds: int = 30
     db_pool_recycle_seconds: int = 1800
     worker_poll_seconds: float = 2.0
+    inline_worker_enabled: bool = False
     worker_shutdown_seconds: int = 20
     metrics_enabled: bool = True
     pdf_font_path: str | None = None  # TTF with Arabic-script coverage for Urdu in PDFs
