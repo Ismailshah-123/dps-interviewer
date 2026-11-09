@@ -11,6 +11,15 @@ class Settings(BaseSettings):
     secret_key: str = Field(min_length=32)
     database_url: str = "sqlite+aiosqlite:///./dps.db"
     storage_root: str = "./storage"
+    # Storage configuration
+    storage_provider: str = "local"  # local or r2
+
+    r2_account_id: str | None = None
+    r2_access_key_id: str | None = None
+    r2_secret_access_key: str | None = None
+    r2_bucket_name: str | None = None
+    r2_endpoint_url: str | None = None
+    r2_region: str = "auto"
     access_token_minutes: int = 15
     refresh_token_days: int = 7
     max_upload_bytes: int = 524_288_000
