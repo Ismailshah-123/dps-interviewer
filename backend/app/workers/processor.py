@@ -245,6 +245,26 @@ class JobProcessor:
 
                 return True
 
+            except asyncio.CancelledError:
+                # The API process may be restarting while this job is running.
+                # Return the claimed job to the queue instead of leaving it locked
+                # until stale-job recovery runs.
+                await db.rollback()
+
+                try:
+                    interrupted_job = await db.get(ProcessingJob, job_id)
+                    if interrupted_job and interrupted_job.status == "running":
+                        interrupted_job.status = "queued"
+                        interrupted_job.locked_at = None
+                        interrupted_job.heartbeat_at = None
+                        interrupted_job.next_attempt_at = utcnow()
+                        await db.commit()
+                except Exception:
+                    await db.rollback()
+
+                job_running.dec()
+                raise
+
             except JobCancelled:
 
                 await db.rollback()
