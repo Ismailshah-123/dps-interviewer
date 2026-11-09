@@ -212,9 +212,35 @@ class JobProcessor:
                 await db.flush()
                 return
 
-        path = self.storage.path_for(recording.storage_key)
-        job.heartbeat_at = utcnow()
-        await db.flush()
+suffix_by_mime = {
+    "audio/webm": ".webm",
+    "audio/wav": ".wav",
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".mp4",
+    "audio/x-m4a": ".m4a",
+    "audio/ogg": ".ogg",
+}
+
+suffix = suffix_by_mime.get(recording.mime_type, ".audio")
+
+temp_dir = tempfile.TemporaryDirectory(prefix="dps-audio-")
+path = Path(temp_dir.name) / f"recording{suffix}"
+
+try:
+    await asyncio.to_thread(
+        self.storage.download_to_path,
+        recording.storage_key,
+        path,
+    )
+
+    job.heartbeat_at = utcnow()
+    await db.flush()
+
+    # Keep the existing transcription and summary processing code
+    # inside this try block.
+
+finally:
+    temp_dir.cleanup()
 
         if job.job_type == "transcription":
             # A failed job may be explicitly retried by an administrator.
