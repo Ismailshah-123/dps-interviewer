@@ -18,6 +18,12 @@ class LocalPrivateStorage:
         self.root = Path(root or settings.storage_root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
 
+    def download_to_path(self, key: str, destination: Path):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        source = self.path_for(key)
+        import shutil
+        shutil.copyfile(source, destination)
+
     def path_for(self, key: str) -> Path:
         path = (self.root / key).resolve()
         if self.root != path and self.root not in path.parents:
