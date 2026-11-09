@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.models import Interview, InterviewStatus, Recording, ProcessingJob, Role, User, ConsentRecord
 from app.schemas.common import RecordingOut
-from app.services.storage.local import LocalPrivateStorage
+from app.services.storage.factory import get_storage
 from app.services.workflow import transition
 from app.services.audit import record_audit
 from app.services.authorization import assert_interview_access
