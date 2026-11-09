@@ -38,7 +38,24 @@ class DPSFormExtraction(BaseModel):
 
 def _schema() -> dict:
     schema = DPSFormExtraction.model_json_schema()
-    schema["additionalProperties"] = False
+
+    def enforce_strict_schema(node):
+        if isinstance(node, dict):
+            properties = node.get("properties")
+
+            if isinstance(properties, dict):
+                # Groq strict mode requires every property to be required
+                node["required"] = list(properties.keys())
+                node["additionalProperties"] = False
+
+            for value in node.values():
+                enforce_strict_schema(value)
+
+        elif isinstance(node, list):
+            for item in node:
+                enforce_strict_schema(item)
+
+    enforce_strict_schema(schema)
     return schema
 
 SYSTEM_PROMPT = """You are the form-extraction assistant for Dawood Public School's Parent's Interview Form Pre-Primary 2026-27.
