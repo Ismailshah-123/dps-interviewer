@@ -101,7 +101,7 @@ async def recover_stale_jobs(db: AsyncSession) -> int:
 
 class JobProcessor:
     def __init__(self):
-        self.storage = LocalPrivateStorage()
+         self.storage = get_storage()
 
     async def claim(self, db: AsyncSession, job_id) -> ProcessingJob | None:
         """Claim a queued job. PostgreSQL uses row locks; SQLite remains single-worker safe enough for dev."""
