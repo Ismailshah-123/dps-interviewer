@@ -10,7 +10,9 @@ from app.models.models import (
     ProcessingJob, Interview, Candidate, Recording, Transcript, TranscriptSegment, Summary,
     InterviewTemplateVersion, InterviewForm, InterviewFormFieldValue, InterviewStatus, ConsentRecord,
 )
-from app.services.storage.local import LocalPrivateStorage
+from app.services.storage.factory import get_storage
+import tempfile
+from pathlib import Path
 from app.services.transcription.factory import get_transcription_provider
 from app.services.summarization.factory import get_summarization_provider
 from app.services.form_extraction import DPSFormExtractor
