@@ -13,7 +13,7 @@ from app.services.audit import record_audit
 from app.services.authorization import assert_interview_access
 
 router = APIRouter(prefix="/recordings", tags=["recordings"])
-storage = LocalPrivateStorage()
+storage = get_storage()
 
 @router.post("/{interview_id}", response_model=RecordingOut, status_code=201)
 async def upload_recording(interview_id: UUID, file: UploadFile = File(...), db: AsyncSession = Depends(get_db), user: User = Depends(require_roles(Role.ADMIN.value, Role.INTERVIEWER.value))):
