@@ -31,7 +31,7 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     admin = await login(client, ADMIN["email"], ADMIN["password"])
     await create_staff(client, admin, "wf.interviewer@dps.example.com", "interviewer")
     await create_staff(client, admin, "wf.other@dps.example.com", "interviewer")
-    await create_staff(client, admin, "wf.principal@dps.example.com", "reviewer")
+    await create_staff(client, admin, "wf.principal@dps.example.com", "principal")
     interviewer = await login(client, "wf.interviewer@dps.example.com")
     other = await login(client, "wf.other@dps.example.com")
     principal = await login(client, "wf.principal@dps.example.com")
@@ -141,6 +141,32 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     assert (await client.get(f"/api/v1/forms/{iid}/pdf", headers=other)).status_code == 404
     assert (await client.get(f"/api/v1/recordings/{iid}/download", headers=other)).status_code == 404
     assert (await client.get(f"/api/v1/recordings/{iid}/download", headers=principal)).status_code == 200
+
+    # The finalization action archives the approved PDF and exposes assets only to administrators.
+    assert (await client.get("/api/v1/admin/storage", headers=principal)).status_code == 403
+    library = await client.get("/api/v1/admin/storage?kind=pdf", headers=admin)
+    assert library.status_code == 200, library.text
+    pdf_assets = [item for item in library.json()["items"] if item["interview_id"] == iid]
+    assert len(pdf_assets) == 1
+    assert pdf_assets[0]["filename"].endswith(".pdf")
+    pdf_preview = await client.get(
+        f"/api/v1/admin/storage/pdf/{pdf_assets[0]['id']}",
+        headers={**admin, "Range": "bytes=0-9"},
+    )
+    assert pdf_preview.status_code == 206
+    assert pdf_preview.headers["content-range"].startswith("bytes 0-9/")
+    assert pdf_preview.content.startswith(b"%PDF") or len(pdf_preview.content) == 10
+
+    recording_library = await client.get("/api/v1/admin/storage?kind=recording", headers=admin)
+    assert recording_library.status_code == 200
+    recording_assets = [item for item in recording_library.json()["items"] if item["interview_id"] == iid]
+    assert len(recording_assets) == 1
+    recording_preview = await client.get(
+        f"/api/v1/admin/storage/recording/{recording_assets[0]['id']}",
+        headers={**admin, "Range": "bytes=0-9"},
+    )
+    assert recording_preview.status_code == 206
+    assert len(recording_preview.content) == 10
 
     stats = (await client.get("/api/v1/interviews/stats", headers=interviewer)).json()
     assert stats["by_status"].get("finalized", 0) >= 1
