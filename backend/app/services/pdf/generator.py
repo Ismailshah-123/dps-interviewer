@@ -79,7 +79,14 @@ def _para_text(text: str) -> str:
 
 
 class InterviewPDFGenerator:
-    def generate(self, title: str, candidate_ref: str, fields: list[dict], meta: dict | None = None) -> bytes:
+    def generate(
+        self,
+        title: str,
+        candidate_ref: str,
+        fields: list[dict],
+        meta: dict | None = None,
+        additional_conversation: list[dict] | None = None,
+    ) -> bytes:
         meta = meta or {}
         font, bold, unicode_ok = _register_fonts()
         base = getSampleStyleSheet()
@@ -127,6 +134,25 @@ class InterviewPDFGenerator:
                 source = SOURCE_LABEL["human"]
             if source:
                 story.append(Paragraph(escape(source), small))
+
+        exchanges = additional_conversation or []
+        story.append(Paragraph("ADDITIONAL CONVERSATION (OUTSIDE THE OFFICIAL FORM)", section))
+        if not exchanges:
+            story.append(Paragraph("No additional question-and-answer exchanges were captured.", body))
+        else:
+            for index, exchange in enumerate(exchanges, start=1):
+                question = str(exchange.get("question") or "").strip()
+                answer = str(exchange.get("answer") or "").strip()
+                asked_by = str(exchange.get("asked_by") or "unclear").replace("_", " ").title()
+                answered_by = str(exchange.get("answered_by") or "unclear").replace("_", " ").title()
+                story.append(Paragraph(escape(f"{index}. {question}"), label))
+                story.append(Paragraph(_para_text(f"Question asked by: {asked_by}"), small))
+                story.append(Paragraph(_para_text(f"Answer: {answer or 'No clear answer captured'}"), body_rtl if ARABIC_RUN.search(answer) else body))
+                if answered_by != "Unclear":
+                    story.append(Paragraph(escape(f"Answered by: {answered_by}"), small))
+                quotes = exchange.get("evidence_quotes") or []
+                if quotes:
+                    story.append(Paragraph(escape("Transcript evidence: " + " | ".join(str(q) for q in quotes)), small))
 
         generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
