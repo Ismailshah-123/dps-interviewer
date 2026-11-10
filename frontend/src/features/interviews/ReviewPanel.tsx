@@ -21,7 +21,7 @@ export function ReviewPanel({ interview }: { interview: Interview }) {
   const [remarks, setRemarks] = useState('')
   const [recommendation, setRecommendation] = useState('')
   const history = useQuery({ queryKey: ['reviews', interview.id], queryFn: () => api.reviews(interview.id) })
-  const isReviewer = user?.role === 'reviewer' || user?.role === 'administrator'
+  const isReviewer = user?.role === 'principal' || user?.role === 'reviewer' || user?.role === 'administrator'
 
   const act = useMutation({
     mutationFn: (action: ReviewAction) => api.review(interview.id, action, remarks, recommendation),
