@@ -108,7 +108,7 @@ export function AppShell() {
           </nav>
           {external.length > 0 ? (
             <div role="status" className="ml-auto rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900">
-              Cloud AI on ({external.join(', ')}): transcript text leaves this computer. Synthetic interviews only.
+              External processing is enabled. Interview transcript data is sent to an approved service for processing.
             </div>
           ) : (
             <div className="ml-auto text-xs text-muted-foreground">Demo environment · synthetic data only</div>
