@@ -19,10 +19,10 @@ interface NavItem {
 
 // Navigation is a convenience only; every route and API call is authorized by the backend.
 export const NAV: NavItem[] = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['administrator', 'interviewer', 'reviewer'] },
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['administrator', 'interviewer', 'reviewer', 'principal'] },
   { to: '/candidates', label: 'Candidates', icon: GraduationCap, roles: ['administrator', 'interviewer', 'reviewer'] },
   { to: '/interviews', label: 'Interviews', icon: Mic, roles: ['administrator', 'interviewer'] },
-  { to: '/reviews', label: 'Review queue', icon: ClipboardCheck, roles: ['administrator', 'reviewer'] },
+  { to: '/reviews', label: 'Review queue', icon: ClipboardCheck, roles: ['administrator', 'reviewer', 'principal'] },
   { to: '/admin/users', label: 'Staff accounts', icon: Users, roles: ['administrator'] },
   { to: '/admin/templates', label: 'Templates', icon: ScrollText, roles: ['administrator'] },
   { to: '/admin/jobs', label: 'Processing jobs', icon: FileClock, roles: ['administrator'] },
