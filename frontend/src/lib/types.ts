@@ -237,9 +237,12 @@ export interface ReviewEntry {
   id: string
   interview_id: string
   reviewer_id: string
+  reviewer_name?: string | null
   action: ReviewAction
   remarks: string | null
   recommendation: string | null
+  status_from?: string | null
+  status_to?: string | null
   created_at: string
 }
 
