@@ -169,10 +169,10 @@ export function StoragePage() {
                   <div><dt className="text-xs text-muted-foreground">Added</dt><dd className="mt-1">{formatDateTime(selected.created_at)}</dd></div>
                 </dl>
                 <div className="flex flex-wrap gap-2">
-                  <Button className="flex-1" onClick={() => void downloadSelected()} disabled={file.isPending}><Download /> Download file</Button>
+                  <Button className="flex-1" onClick={() => void downloadSelected()} ><Download /> Download file</Button>
                   <Button variant="outline" onClick={() => window.open(`/interviews/${selected.interview_id}`, '_self')}><Play /> Interview</Button>
                 </div>
-                {(file.isError || playback.isError) && <p className="text-xs text-destructive">{errorMessage(file.error ?? playback.error)}</p>}
+                {file.isError && <p className="text-xs text-destructive">{errorMessage(file.error)}</p>}
               </div>
             )}
           </CardContent>
