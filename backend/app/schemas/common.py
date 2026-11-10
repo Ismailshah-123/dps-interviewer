@@ -97,6 +97,9 @@ class ReviewOut(ORMModel):
     action: str
     remarks: str | None
     recommendation: str | None
+    status_from: str | None = None
+    status_to: str | None = None
+    reviewer_name: str | None = None
     created_at: datetime
 
 class ConsentCreate(BaseModel):
