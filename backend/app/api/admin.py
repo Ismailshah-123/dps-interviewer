@@ -1,7 +1,9 @@
+import asyncio
+import os
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-import re
-import os
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import require_roles
@@ -128,6 +130,41 @@ async def storage_library(
     }
 
 
+@router.get("/storage/{kind}/{asset_id}/url")
+async def storage_asset_playback_url(
+    kind: str,
+    asset_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_roles(Role.ADMIN.value)),
+):
+    from uuid import UUID
+    if kind not in {"recording", "pdf"}:
+        raise HTTPException(status_code=404, detail="Storage item not found")
+    try:
+        uid = UUID(asset_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Storage item not found") from exc
+    item = await db.get(Recording if kind == "recording" else StoredDocument, uid)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Storage item not found")
+
+    storage = get_storage()
+    presign = getattr(storage, "presign_get", None)
+    if presign is None:
+        return {"url": None, "expires_in": None}
+    url = await asyncio.to_thread(presign, item.storage_key, 300)
+    await record_audit(
+        db,
+        actor_user_id=admin.id,
+        action="storage.preview_url_issued",
+        resource_type=kind,
+        resource_id=item.id,
+        metadata={"expires_in": 300},
+    )
+    await db.commit()
+    return {"url": url, "expires_in": 300}
+
+
 @router.get("/storage/{kind}/{asset_id}")
 async def stream_storage_asset(
     kind: str,
@@ -166,17 +203,17 @@ async def stream_storage_asset(
 
     try:
         if partial:
-            body, total_size, last = storage.open_range(item.storage_key, start, end)
+            body, total_size, last = await asyncio.to_thread(storage.open_range, item.storage_key, start, end)
             length = last - start + 1
         else:
-            body = storage.open(item.storage_key)
+            body = await asyncio.to_thread(storage.open, item.storage_key)
             total_size = item.size_bytes
             length = total_size
             last = total_size - 1
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=416, detail="Requested byte range is not available") from exc
 
-    safe_name = os.path.basename(item.original_filename).replace('"', "")
+    safe_name = re.sub(r"[^A-Za-z0-9._ -]", "_", os.path.basename(item.original_filename))[:180] or "download"
     headers = {
         "Accept-Ranges": "bytes",
         "Content-Length": str(length),
