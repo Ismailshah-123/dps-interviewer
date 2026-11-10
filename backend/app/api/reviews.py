@@ -8,7 +8,7 @@ from app.models.models import Interview, InterviewForm, InterviewFormFieldValue,
 from app.schemas.common import ReviewCreate, ReviewOut
 from app.services.workflow import transition
 from app.services.audit import record_audit
-from app.services.authorization import assert_interview_access
+from app.services.authorization import assert_interview_access, REVIEW_ROLES
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
@@ -42,7 +42,7 @@ async def review(
     interview_id: UUID,
     body: ReviewCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles(Role.REVIEWER.value, Role.ADMIN.value)),
+    user: User = Depends(require_roles(*REVIEW_ROLES, Role.ADMIN.value)),
 ):
     interview = await db.get(Interview, interview_id)
     if not interview:
