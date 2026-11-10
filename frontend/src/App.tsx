@@ -5,6 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { AppShell } from '@/components/AppShell'
 import { AuditPage, JobsPage, SystemPage, TemplatesPage } from '@/features/admin/OperationsPages'
 import { UsersPage } from '@/features/admin/UsersPage'
+import { StoragePage } from '@/features/admin/StoragePage'
 import { AuthProvider } from '@/features/auth/AuthProvider'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { CandidateDetailPage } from '@/features/candidates/CandidateDetailPage'
@@ -68,6 +69,7 @@ export const routes = [
                 ),
               },
               { path: '/admin/users', element: <RequireRole roles={['administrator']}><UsersPage /></RequireRole> },
+              { path: '/admin/storage', element: <RequireRole roles={['administrator']}><StoragePage /></RequireRole> },
               { path: '/admin/templates', element: <RequireRole roles={['administrator']}><TemplatesPage /></RequireRole> },
               { path: '/admin/jobs', element: <RequireRole roles={['administrator']}><JobsPage /></RequireRole> },
               { path: '/admin/audit', element: <RequireRole roles={['administrator']}><AuditPage /></RequireRole> },
