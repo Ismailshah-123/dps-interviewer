@@ -68,5 +68,32 @@ class LocalPrivateStorage:
     def open(self, key: str):
         return self.path_for(key).open("rb")
 
+    def open_range(self, key: str, start: int, end: int | None = None):
+        path = self.path_for(key)
+        size = path.stat().st_size
+        if start < 0 or start >= size or (end is not None and end < start):
+            raise ValueError("Invalid byte range")
+        last = min(end if end is not None else size - 1, size - 1)
+        handle = path.open("rb")
+        handle.seek(start)
+        return _LimitedReader(handle, last - start + 1), size, last
+
     def delete(self, key: str):
         self.path_for(key).unlink(missing_ok=True)
+
+
+class _LimitedReader:
+    def __init__(self, handle, remaining: int):
+        self.handle = handle
+        self.remaining = remaining
+
+    def read(self, size: int = -1):
+        if self.remaining <= 0:
+            return b""
+        amount = self.remaining if size < 0 else min(size, self.remaining)
+        data = self.handle.read(amount)
+        self.remaining -= len(data)
+        return data
+
+    def close(self):
+        self.handle.close()
