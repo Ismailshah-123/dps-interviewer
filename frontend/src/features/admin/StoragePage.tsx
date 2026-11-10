@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Archive, AudioLines, Download, FileText, HardDrive, Play, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,6 +16,21 @@ export function StoragePage() {
   const [search, setSearch] = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
   const [selected, setSelected] = useState<StorageAsset | null>(null)
+  const qc = useQueryClient()
+  const unarchived = useQuery({
+    queryKey: ['admin-storage-unarchived'],
+    queryFn: () => api.unarchivedInterviews(),
+    staleTime: 15_000,
+  })
+  const archive = useMutation({
+    mutationFn: api.archiveFinalizedPdf,
+    onSuccess: (document) => {
+      toast.success(`Archived ${document.filename}`)
+      qc.invalidateQueries({ queryKey: ['admin-storage'] })
+      qc.invalidateQueries({ queryKey: ['admin-storage-unarchived'] })
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  })
   const assets = useQuery({
     queryKey: ['admin-storage', { kind, q: appliedSearch }],
     queryFn: () => api.storageAssets({ kind, q: appliedSearch || undefined, limit: 100 }),
@@ -97,6 +112,28 @@ export function StoragePage() {
           </CardContent>
         </Card>
       </div>
+
+      {unarchived.data?.items.length ? (
+        <Card className="border-amber-200/80">
+          <CardHeader>
+            <CardTitle className="text-base">Finalized interviews awaiting PDF archival</CardTitle>
+            <CardDescription>These older finalized records do not yet have a stored PDF. Archive them here without changing their interview status.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {unarchived.data.items.map((item) => (
+              <div key={item.interview_id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">{item.candidate_name}</p>
+                  <p className="text-xs text-muted-foreground">{item.candidate_reference} · Finalized {formatDateTime(item.finalized_at)}</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => archive.mutate(item.interview_id)} disabled={archive.isPending}>
+                  {archive.isPending ? 'Archiving…' : 'Archive PDF'}
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
         <Card>
