@@ -74,6 +74,10 @@
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv11", "ss01";
   }
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.025em;
+  }
   /* Urdu (Perso-Arabic) text keeps its own direction and a readable line height. */
   [lang="ur"], .urdu {
     font-family: var(--font-urdu);
@@ -103,6 +107,13 @@
   transform: perspective(900px) translateY(-3px) rotateX(1deg);
   box-shadow: 0 14px 30px -22px rgb(15 23 42 / 35%);
 }
+.app-shell [data-slot="card"] {
+  transform-style: preserve-3d;
+  transition: transform 220ms ease, box-shadow 220ms ease;
+}
+.app-shell [data-slot="card"]:hover {
+  transform: perspective(1200px) translateY(-1px) rotateX(0.15deg);
+}
 .storage-file-row {
   transform: translateZ(0);
 }
@@ -117,4 +128,6 @@
   .page-enter { animation: none; }
   .storage-summary-card { transition: none; }
   .storage-summary-card:hover { transform: none; }
+  .app-shell [data-slot="card"] { transition: none; }
+  .app-shell [data-slot="card"]:hover { transform: none; }
 }
