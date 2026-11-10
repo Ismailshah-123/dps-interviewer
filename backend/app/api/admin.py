@@ -152,17 +152,17 @@ async def storage_asset_playback_url(
     presign = getattr(storage, "presign_get", None)
     if presign is None:
         return {"url": None, "expires_in": None}
-    url = await asyncio.to_thread(presign, item.storage_key, 300)
+    url = await asyncio.to_thread(presign, item.storage_key, 900)
     await record_audit(
         db,
         actor_user_id=admin.id,
         action="storage.preview_url_issued",
         resource_type=kind,
         resource_id=item.id,
-        metadata={"expires_in": 300},
+        metadata={"expires_in": 900},
     )
     await db.commit()
-    return {"url": url, "expires_in": 300}
+    return {"url": url, "expires_in": 900}
 
 
 @router.get("/storage/{kind}/{asset_id}")
