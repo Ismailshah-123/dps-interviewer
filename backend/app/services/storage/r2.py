@@ -125,6 +125,19 @@ class R2PrivateStorage:
         )
         return response["Body"]
 
+    def open_range(self, key: str, start: int, end: int | None = None):
+        head = self.client.head_object(Bucket=self.bucket, Key=key)
+        size = int(head["ContentLength"])
+        if start < 0 or start >= size or (end is not None and end < start):
+            raise ValueError("Invalid byte range")
+        last = min(end if end is not None else size - 1, size - 1)
+        response = self.client.get_object(
+            Bucket=self.bucket,
+            Key=key,
+            Range=f"bytes={start}-{last}",
+        )
+        return response["Body"], size, last
+
     def delete(self, key: str):
         self.client.delete_object(
             Bucket=self.bucket,
