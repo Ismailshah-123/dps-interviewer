@@ -29,7 +29,8 @@ export const REVIEW_QUEUE_STATUSES: InterviewStatus[] = ['submitted', 'principal
 export const ROLE_LABEL: Record<Role, string> = {
   administrator: 'Administrator',
   interviewer: 'Interviewer',
-  reviewer: 'Principal / Reviewer',
+  reviewer: 'Reviewer (legacy)',
+  principal: 'Principal',
 }
 
 export function statusLabel(status: string): string {
