@@ -3,7 +3,7 @@ import pytest
 
 from app.core.config import settings
 
-ADMIN = {"email": "admin@dps.example.com", "password": "TestPassword123!"}
+ADMIN = {"email": "admin@dps.edu.pk", "password": "TestPassword123!"}
 PASSWORD = "Synthetic-Pass-2026!"
 # Minimal EBML header: enough to pass the WebM signature check. Content is synthetic, not real audio.
 FAKE_WEBM = b"\x1a\x45\xdf\xa3" + b"\x00" * 256
@@ -134,6 +134,9 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
 
     history = (await client.get(f"/api/v1/reviews/{iid}", headers=principal)).json()
     assert [h["action"] for h in history] == ["review", "request_correction", "review", "review", "finalize"]
+    assert all(h["reviewer_name"] == "Synthetic principal" for h in history)
+    assert history[-1]["status_from"] == "reviewed"
+    assert history[-1]["status_to"] == "finalized"
     assert (await client.get(f"/api/v1/reviews/{iid}", headers=other)).status_code == 404
 
     r = await client.get(f"/api/v1/forms/{iid}/pdf", headers=principal)
@@ -149,6 +152,11 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     pdf_assets = [item for item in library.json()["items"] if item["interview_id"] == iid]
     assert len(pdf_assets) == 1
     assert pdf_assets[0]["filename"].endswith(".pdf")
+    fallback_url = await client.get(
+        f"/api/v1/admin/storage/pdf/{pdf_assets[0]['id']}/url", headers=admin
+    )
+    assert fallback_url.status_code == 200
+    assert fallback_url.json() == {"url": None, "expires_in": None}
     pdf_preview = await client.get(
         f"/api/v1/admin/storage/pdf/{pdf_assets[0]['id']}",
         headers={**admin, "Range": "bytes=0-9"},
