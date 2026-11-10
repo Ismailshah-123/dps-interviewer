@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/common'
+import { EmptyState, ErrorState, LoadingRows, PageHeader, Pagination } from '@/components/common'
 import { api, errorMessage } from '@/lib/api'
 import { formatBytes, formatDateTime } from '@/lib/status'
 import type { StorageAsset } from '@/lib/types'
@@ -15,6 +15,7 @@ export function StoragePage() {
   const [kind, setKind] = useState<'all' | 'recording' | 'pdf'>('all')
   const [search, setSearch] = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
+  const [skip, setSkip] = useState(0)
   const [selected, setSelected] = useState<StorageAsset | null>(null)
   const qc = useQueryClient()
   const unarchived = useQuery({
@@ -32,8 +33,8 @@ export function StoragePage() {
     onError: (error) => toast.error(errorMessage(error)),
   })
   const assets = useQuery({
-    queryKey: ['admin-storage', { kind, q: appliedSearch }],
-    queryFn: () => api.storageAssets({ kind, q: appliedSearch || undefined, limit: 100 }),
+    queryKey: ['admin-storage', { kind, q: appliedSearch, skip }],
+    queryFn: () => api.storageAssets({ kind, q: appliedSearch || undefined, skip, limit: 25 }),
     staleTime: 15_000,
   })
   const playback = useQuery({
@@ -102,13 +103,13 @@ export function StoragePage() {
         <Card className="storage-summary-card">
           <CardContent className="flex items-center gap-3 pt-5">
             <div className="rounded-xl bg-indigo-50 p-3 text-indigo-800"><AudioLines className="size-5" /></div>
-            <div><p className="text-xs text-muted-foreground">Recordings</p><p className="font-display text-2xl font-semibold tabular-nums">{items.filter((item) => item.kind === 'recording').length}</p></div>
+            <div><p className="text-xs text-muted-foreground">Recordings shown</p><p className="font-display text-2xl font-semibold tabular-nums">{items.filter((item) => item.kind === 'recording').length}</p></div>
           </CardContent>
         </Card>
         <Card className="storage-summary-card">
           <CardContent className="flex items-center gap-3 pt-5">
             <div className="rounded-xl bg-emerald-50 p-3 text-emerald-800"><FileText className="size-5" /></div>
-            <div><p className="text-xs text-muted-foreground">PDF documents</p><p className="font-display text-2xl font-semibold tabular-nums">{items.filter((item) => item.kind === 'pdf').length}</p></div>
+            <div><p className="text-xs text-muted-foreground">PDFs shown</p><p className="font-display text-2xl font-semibold tabular-nums">{items.filter((item) => item.kind === 'pdf').length}</p></div>
           </CardContent>
         </Card>
       </div>
@@ -142,12 +143,12 @@ export function StoragePage() {
             <CardDescription>Only administrators can browse these records. Files remain private; access is streamed through authenticated endpoints.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); setAppliedSearch(search.trim()) }}>
+            <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); setAppliedSearch(search.trim()); setSkip(0) }}>
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search candidate or file" aria-label="Search stored files" />
               </div>
-              <Select value={kind} onValueChange={(value) => setKind(value as 'all' | 'recording' | 'pdf')}>
+              <Select value={kind} onValueChange={(value) => { setKind(value as 'all' | 'recording' | 'pdf'); setSkip(0) }}>
                 <SelectTrigger className="w-full sm:w-40" aria-label="Filter storage type"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All files</SelectItem>
@@ -178,6 +179,7 @@ export function StoragePage() {
                     <span className="rounded-full border px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{item.kind === 'pdf' ? `PDF · v${item.version_number ?? 1}` : 'Audio'}</span>
                   </button>
                 ))}
+                <Pagination meta={assets.data!.meta} onPage={setSkip} />
               </div>
             )}
           </CardContent>
