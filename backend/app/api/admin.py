@@ -12,6 +12,7 @@ from app.services.retention import purge_old_recordings
 from app.services.audit import record_audit
 from app.models.models import AuditEvent, Candidate, Interview, ProcessingJob, Recording, StoredDocument, Role, User
 from app.services.storage.factory import get_storage
+from app.services.pdf.archive import create_final_interview_pdf
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 @router.get("/jobs")
@@ -68,6 +69,79 @@ async def retry_job(job_id: str, db: AsyncSession = Depends(get_db), admin: User
     await record_audit(db, actor_user_id=admin.id, action="processing.admin_retry", resource_type="processing_job", resource_id=job.id)
     await db.commit()
     return {"id": str(job.id), "status": job.status, "message": "Job requeued"}
+
+
+@router.get("/storage/unarchived-interviews")
+async def unarchived_finalized_interviews(
+    q: str | None = Query(default=None, max_length=120),
+    limit: int = Query(50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_roles(Role.ADMIN.value)),
+):
+    stmt = (
+        select(Interview, Candidate)
+        .join(Candidate, Candidate.id == Interview.candidate_id)
+        .where(Interview.status == "finalized")
+        .order_by(Interview.finalized_at.desc())
+        .limit(500)
+    )
+    if q:
+        term = f"%{q.strip()}%"
+        stmt = stmt.where(Candidate.name.ilike(term) | Candidate.reference_number.ilike(term))
+    rows = (await db.execute(stmt)).all()
+    items = []
+    for interview, candidate in rows:
+        archived = await db.scalar(
+            select(StoredDocument.id)
+            .where(
+                StoredDocument.interview_id == interview.id,
+                StoredDocument.document_type == "final_interview_pdf",
+            )
+            .limit(1)
+        )
+        if archived is None:
+            items.append({
+                "interview_id": str(interview.id),
+                "candidate_name": candidate.name,
+                "candidate_reference": candidate.reference_number,
+                "finalized_at": interview.finalized_at,
+            })
+            if len(items) >= limit:
+                break
+    return {"items": items, "meta": {"total": len(items), "limit": limit}}
+
+
+@router.post("/storage/archive/{interview_id}")
+async def archive_existing_finalized_interview(
+    interview_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_roles(Role.ADMIN.value)),
+):
+    from uuid import UUID
+    try:
+        uid = UUID(interview_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Interview not found") from exc
+    interview = await db.get(Interview, uid)
+    if interview is None:
+        raise HTTPException(status_code=404, detail="Interview not found")
+    if interview.status != "finalized":
+        raise HTTPException(status_code=409, detail="Only finalized interviews can be archived")
+    try:
+        document = await create_final_interview_pdf(db, interview, admin)
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await db.commit()
+    await db.refresh(document)
+    return {
+        "id": str(document.id),
+        "interview_id": str(document.interview_id),
+        "filename": document.original_filename,
+        "size_bytes": document.size_bytes,
+        "version_number": document.version_number,
+        "created_at": document.created_at,
+    }
 
 
 @router.get("/storage")
