@@ -63,6 +63,7 @@ describe('authentication flow', () => {
   it.each([
     ['interviewer', ['Dashboard', 'Candidates', 'Interviews'], ['Review queue', 'Staff accounts', 'Audit log']],
     ['reviewer', ['Dashboard', 'Review queue'], ['Interviews', 'Staff accounts']],
+    ['principal', ['Dashboard', 'Candidates', 'Review queue'], ['Interviews', 'Staff accounts']],
     ['administrator', ['Staff accounts', 'Audit log', 'Processing jobs', 'Review queue'], []],
   ])('shows %s navigation only for permitted areas', async (role, visible, hidden) => {
     mockFetch((url) => {
