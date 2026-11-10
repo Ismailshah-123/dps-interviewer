@@ -99,8 +99,9 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     # Professional-judgement fields are never filled by AI.
     assert fields["interviewer_observations"]["value"]["text"] == ""
     assert fields["interviewer_observations"]["value"]["source"] == "manual_required"
-    # Absent information is flagged, not invented.
-    assert fields["follow_up_questions"]["value"]["text"] == "Not mentioned"
+    # An unanswered form field stays empty and is explicitly marked as not mentioned.
+    assert fields["q1a_ideal_school"]["value"]["text"] == ""
+    assert fields["q1a_ideal_school"]["value"]["source"] == "not_mentioned"
 
     # Submission is blocked until every field is confirmed by the interviewer.
     r = await client.post(f"/api/v1/interviews/{iid}/submit", headers=interviewer)
