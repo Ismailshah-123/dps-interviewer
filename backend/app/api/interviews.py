@@ -9,7 +9,7 @@ from app.models.models import Candidate, ConsentRecord, Interview, InterviewForm
 from app.schemas.common import InterviewCreate, InterviewOut, ConsentCreate, InterviewPage, InterviewStats
 from app.services.workflow import transition
 from app.services.audit import record_audit
-from app.services.authorization import assert_interview_access, REVIEW_VISIBLE_STATUSES
+from app.services.authorization import assert_interview_access, REVIEW_VISIBLE_STATUSES, REVIEW_ROLES
 
 router = APIRouter(prefix="/interviews", tags=["interviews"])
 
@@ -21,7 +21,7 @@ async def get_owned_interview(interview_id: UUID, db: AsyncSession, user: User):
 def _scoped(stmt, user: User):
     if user.role == Role.INTERVIEWER.value:
         return stmt.where(Interview.interviewer_id == user.id)
-    if user.role == Role.REVIEWER.value:
+    if user.role in REVIEW_ROLES:
         return stmt.where(Interview.status.in_(list(REVIEW_VISIBLE_STATUSES)))
     return stmt
 
