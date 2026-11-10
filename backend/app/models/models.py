@@ -135,6 +135,22 @@ class Recording(Base):
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=now_utc)
 
+class StoredDocument(Base):
+    __tablename__ = "stored_documents"
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    interview_id: Mapped[UUID] = mapped_column(ForeignKey("interviews.id", ondelete="CASCADE"), index=True)
+    document_type: Mapped[str] = mapped_column(String(40), default="final_interview_pdf")
+    storage_key: Mapped[str] = mapped_column(String(500), unique=True)
+    original_filename: Mapped[str] = mapped_column(String(255))
+    mime_type: Mapped[str] = mapped_column(String(100), default="application/pdf")
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    version_number: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=now_utc)
+    __table_args__ = (UniqueConstraint("interview_id", "document_type", "version_number", name="uq_stored_document_interview_version"),)
+
+
 class ProcessingJob(Base):
     __tablename__ = "processing_jobs"
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -242,6 +258,8 @@ class InterviewReview(Base):
     action: Mapped[str] = mapped_column(String(64))
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
     recommendation: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    status_from: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    status_to: Mapped[str | None] = mapped_column(String(40), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=now_utc)
 
 class AuditEvent(Base):
