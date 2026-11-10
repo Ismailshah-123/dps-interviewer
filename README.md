@@ -1,8 +1,10 @@
 # DPS AI Student Interview Documentation System
 
-Records an in-person admission interview in the browser (with consent), transcribes it locally, drafts a structured summary and the interview form, and routes it through interviewer confirmation and principal review. **Staff review every field. The software never makes or ranks admission decisions.**
+**A human-reviewed workflow for recording, transcribing, and documenting student admission interviews.**
 
-> Demo status (2026-10-30): working end-to-end demo on synthetic data. **Not production-ready.** The interview form is a placeholder until the official DPS template is provided. See `docs/PROJECT_LOG.md` for exactly what has and has not been verified.
+The system captures an interview with consent, creates a transcript and structured draft, and routes the record through interviewer confirmation and principal review. **Staff remain responsible for every field; the software does not make, rank, or recommend admission decisions.**
+
+> **Current status:** End-to-end demonstration using synthetic data. Not production-ready. The interview form remains a placeholder pending the official school template. Verification notes are maintained in `docs/PROJECT_LOG.md`.
 
 ## Stack
 
