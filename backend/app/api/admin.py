@@ -78,36 +78,34 @@ async def unarchived_finalized_interviews(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_roles(Role.ADMIN.value)),
 ):
+    archived_document = (
+        select(StoredDocument.id)
+        .where(
+            StoredDocument.interview_id == Interview.id,
+            StoredDocument.document_type == "final_interview_pdf",
+        )
+        .exists()
+    )
     stmt = (
         select(Interview, Candidate)
         .join(Candidate, Candidate.id == Interview.candidate_id)
-        .where(Interview.status == "finalized")
+        .where(Interview.status == "finalized", ~archived_document)
         .order_by(Interview.finalized_at.desc())
-        .limit(500)
+        .limit(limit)
     )
     if q:
         term = f"%{q.strip()}%"
         stmt = stmt.where(Candidate.name.ilike(term) | Candidate.reference_number.ilike(term))
     rows = (await db.execute(stmt)).all()
-    items = []
-    for interview, candidate in rows:
-        archived = await db.scalar(
-            select(StoredDocument.id)
-            .where(
-                StoredDocument.interview_id == interview.id,
-                StoredDocument.document_type == "final_interview_pdf",
-            )
-            .limit(1)
-        )
-        if archived is None:
-            items.append({
-                "interview_id": str(interview.id),
-                "candidate_name": candidate.name,
-                "candidate_reference": candidate.reference_number,
-                "finalized_at": interview.finalized_at,
-            })
-            if len(items) >= limit:
-                break
+    items = [
+        {
+            "interview_id": str(interview.id),
+            "candidate_name": candidate.name,
+            "candidate_reference": candidate.reference_number,
+            "finalized_at": interview.finalized_at,
+        }
+        for interview, candidate in rows
+    ]
     return {"items": items, "meta": {"total": len(items), "limit": limit}}
 
 
