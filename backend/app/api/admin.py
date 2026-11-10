@@ -152,20 +152,35 @@ async def storage_library(
     admin: User = Depends(require_roles(Role.ADMIN.value)),
 ):
     assets = []
+    total = 0
+    fetch_limit = skip + limit
+
     if kind in {"all", "recording"}:
         stmt = (
             select(Recording, Interview, Candidate)
             .join(Interview, Interview.id == Recording.interview_id)
             .join(Candidate, Candidate.id == Interview.candidate_id)
         )
+        count_stmt = (
+            select(func.count(Recording.id))
+            .join(Interview, Interview.id == Recording.interview_id)
+            .join(Candidate, Candidate.id == Interview.candidate_id)
+        )
         if q:
             term = f"%{q.strip()}%"
-            stmt = stmt.where(
+            predicate = (
                 Candidate.name.ilike(term)
                 | Candidate.reference_number.ilike(term)
                 | Recording.original_filename.ilike(term)
             )
-        rows = (await db.execute(stmt.order_by(Recording.created_at.desc()).limit(500))).all()
+            stmt = stmt.where(predicate)
+            count_stmt = count_stmt.where(predicate)
+        total += int(await db.scalar(count_stmt) or 0)
+        rows = (
+            await db.execute(
+                stmt.order_by(Recording.created_at.desc()).limit(fetch_limit)
+            )
+        ).all()
         assets.extend({
             "id": str(record.id), "kind": "recording", "interview_id": str(interview.id),
             "candidate_reference": candidate.reference_number, "candidate_name": candidate.name,
@@ -173,20 +188,33 @@ async def storage_library(
             "size_bytes": record.size_bytes, "created_at": record.created_at,
             "version_number": None,
         } for record, interview, candidate in rows)
+
     if kind in {"all", "pdf"}:
         stmt = (
             select(StoredDocument, Interview, Candidate)
             .join(Interview, Interview.id == StoredDocument.interview_id)
             .join(Candidate, Candidate.id == Interview.candidate_id)
         )
+        count_stmt = (
+            select(func.count(StoredDocument.id))
+            .join(Interview, Interview.id == StoredDocument.interview_id)
+            .join(Candidate, Candidate.id == Interview.candidate_id)
+        )
         if q:
             term = f"%{q.strip()}%"
-            stmt = stmt.where(
+            predicate = (
                 Candidate.name.ilike(term)
                 | Candidate.reference_number.ilike(term)
                 | StoredDocument.original_filename.ilike(term)
             )
-        rows = (await db.execute(stmt.order_by(StoredDocument.created_at.desc()).limit(500))).all()
+            stmt = stmt.where(predicate)
+            count_stmt = count_stmt.where(predicate)
+        total += int(await db.scalar(count_stmt) or 0)
+        rows = (
+            await db.execute(
+                stmt.order_by(StoredDocument.created_at.desc()).limit(fetch_limit)
+            )
+        ).all()
         assets.extend({
             "id": str(record.id), "kind": "pdf", "interview_id": str(interview.id),
             "candidate_reference": candidate.reference_number, "candidate_name": candidate.name,
@@ -194,8 +222,8 @@ async def storage_library(
             "size_bytes": record.size_bytes, "created_at": record.created_at,
             "version_number": record.version_number,
         } for record, interview, candidate in rows)
+
     assets.sort(key=lambda item: item["created_at"], reverse=True)
-    total = len(assets)
     return {
         "items": assets[skip:skip + limit],
         "meta": {"total": total, "skip": skip, "limit": limit, "has_more": skip + limit < total},
