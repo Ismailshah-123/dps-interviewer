@@ -157,7 +157,7 @@ async def stream_storage_asset(
     start, end = 0, None
     partial = False
     if range_header:
-        match = re.fullmatch(r"bytes=(\\d+)-(\\d*)", range_header.strip())
+        match = re.fullmatch(r"bytes=(\d+)-(\d*)", range_header.strip())
         if not match:
             raise HTTPException(status_code=416, detail="Invalid byte range")
         start = int(match.group(1))
