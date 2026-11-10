@@ -11,6 +11,8 @@ REVIEW_VISIBLE_STATUSES = {
 
 # Evidence (transcript segments and form fields) may only change before submission
 # or while a correction requested by the reviewer is being addressed.
+REVIEW_ROLES = {Role.REVIEWER.value, Role.PRINCIPAL.value}
+
 EDITABLE_STATUSES = {
     InterviewStatus.TRANSCRIPT_READY.value,
     InterviewStatus.FORM_DRAFT_READY.value,
@@ -32,14 +34,14 @@ def assert_interview_access(interview: Interview | None, user: User, *, reviewer
         raise HTTPException(status_code=404, detail="Interview not found")
     if user.role == Role.INTERVIEWER.value and interview.interviewer_id != user.id:
         raise HTTPException(status_code=404, detail="Interview not found")
-    if user.role == Role.REVIEWER.value and reviewer_queue_only and not reviewer_can_access(interview):
+    if user.role in REVIEW_ROLES and reviewer_queue_only and not reviewer_can_access(interview):
         raise HTTPException(status_code=404, detail="Interview not found")
     return interview
 
 
 def assert_can_edit_interview(interview: Interview, user: User) -> None:
-    if user.role == Role.REVIEWER.value:
-        raise HTTPException(status_code=403, detail="Reviewers cannot edit interview evidence")
+    if user.role in REVIEW_ROLES:
+        raise HTTPException(status_code=403, detail="Reviewers and principals cannot edit interview evidence")
     if user.role == Role.INTERVIEWER.value and interview.interviewer_id != user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     if interview.status not in EDITABLE_STATUSES:
