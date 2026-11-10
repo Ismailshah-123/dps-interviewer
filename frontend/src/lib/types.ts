@@ -93,6 +93,19 @@ export interface Recording {
   created_at: string
 }
 
+export interface StorageAsset {
+  id: string
+  kind: 'recording' | 'pdf'
+  interview_id: string
+  candidate_reference: string
+  candidate_name: string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  created_at: string
+  version_number: number | null
+}
+
 export interface ProcessingJob {
   id: string
   type: string
