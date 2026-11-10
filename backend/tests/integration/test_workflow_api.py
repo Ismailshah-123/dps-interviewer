@@ -116,7 +116,7 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
             r = await client.post(f"/api/v1/forms/{form_id}/fields/{fid}/confirm", headers=interviewer)
             assert r.status_code == 200 and r.json()["human_edited"] is False
     # Other interviewer cannot edit evidence on this form.
-    r = await client.patch(f"/api/v1/forms/{form_id}/fields/interview_overview", headers=other, json={"value": {"text": "tampered"}})
+    r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=other, json={"value": {"text": "tampered"}})
     assert r.status_code == 404
 
     r = await client.post(f"/api/v1/interviews/{iid}/submit", headers=interviewer)
@@ -124,11 +124,11 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     assert r.json()["status"] == "submitted"
 
     # After submission evidence is frozen for the interviewer.
-    r = await client.patch(f"/api/v1/forms/{form_id}/fields/interview_overview", headers=interviewer, json={"value": {"text": "late edit"}})
+    r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=interviewer, json={"value": {"text": "late edit"}})
     assert r.status_code == 409
 
     # Reviewer: cannot edit, can review; correction requires remarks.
-    r = await client.patch(f"/api/v1/forms/{form_id}/fields/interview_overview", headers=principal, json={"value": {"text": "x"}})
+    r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=principal, json={"value": {"text": "x"}})
     assert r.status_code == 403
     assert (await client.post(f"/api/v1/reviews/{iid}", headers=interviewer, json={"action": "review"})).status_code == 403
     assert (await client.post(f"/api/v1/reviews/{iid}", headers=principal, json={"action": "review"})).json()["status"] == "principal_review"
@@ -138,7 +138,7 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     assert r.json()["status"] == "correction_requested"
 
     # Interviewer corrects and resubmits.
-    r = await client.patch(f"/api/v1/forms/{form_id}/fields/interview_overview", headers=interviewer, json={"value": {"text": "Clarified synthetic overview."}})
+    r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=interviewer, json={"value": {"text": "Clarified synthetic overview."}})
     assert r.status_code == 200
     r = await client.post(f"/api/v1/interviews/{iid}/submit", headers=interviewer)
     assert r.status_code == 200, r.text
