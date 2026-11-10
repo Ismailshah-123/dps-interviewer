@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { EmptyState, ErrorState, LoadingRows, Spinner, ToneBadge } from '@/components/common'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { api, errorMessage } from '@/lib/api'
-import { formatDateTime } from '@/lib/status'
+import { formatDateTime, statusLabel } from '@/lib/status'
 import type { Interview, ReviewAction } from '@/lib/types'
 
 const ACTION_LABEL: Record<ReviewAction, string> = { review: 'Reviewed', request_correction: 'Correction requested', finalize: 'Finalized' }
@@ -101,6 +101,10 @@ export function ReviewPanel({ interview }: { interview: Interview }) {
                     <ToneBadge tone={h.action === 'request_correction' ? 'attention' : 'success'}>{ACTION_LABEL[h.action]}</ToneBadge>
                     <span className="text-muted-foreground">{formatDateTime(h.created_at)}</span>
                   </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {h.reviewer_name ? `By ${h.reviewer_name}` : 'Authorized reviewer'}
+                    {h.status_from && h.status_to ? ` · ${statusLabel(h.status_from)} → ${statusLabel(h.status_to)}` : ''}
+                  </p>
                   {h.remarks && <p className="mt-1 text-sm whitespace-pre-wrap">{h.remarks}</p>}
                   {h.recommendation && <p className="mt-1 text-xs text-muted-foreground">Reviewer note: {h.recommendation}</p>}
                 </li>
