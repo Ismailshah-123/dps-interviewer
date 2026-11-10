@@ -279,6 +279,8 @@ export const api = {
     request<Page<StorageAsset>>('/admin/storage', { query: { ...params } }),
   storageAssetBlob: (asset: StorageAsset, disposition: 'inline' | 'attachment' = 'inline') =>
     requestBlob(`/admin/storage/${asset.kind}/${asset.id}?disposition=${disposition}`),
+  storageAssetUrl: (asset: StorageAsset) =>
+    request<{ url: string | null; expires_in: number | null }>(`/admin/storage/${asset.kind}/${asset.id}/url`),
   adminJobs: (params: ListParams & { status?: string } = {}) => request<Page<AdminJob>>('/admin/jobs', { query: { ...params } }),
   retryJob: (id: string) => request<{ status: string }>(`/admin/jobs/${id}/retry`, { method: 'POST' }),
   cancelJob: (id: string) => request<{ status: string }>(`/processing/jobs/${id}/cancel`, { method: 'POST' }),
