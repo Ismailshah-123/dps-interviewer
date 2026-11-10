@@ -125,6 +125,13 @@ class R2PrivateStorage:
         )
         return response["Body"]
 
+    def presign_get(self, key: str, expires_in: int = 300) -> str:
+        return self.client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self.bucket, "Key": key},
+            ExpiresIn=max(60, min(expires_in, 900)),
+        )
+
     def open_range(self, key: str, start: int, end: int | None = None):
         head = self.client.head_object(Bucket=self.bucket, Key=key)
         size = int(head["ContentLength"])
