@@ -2,6 +2,7 @@
 import pytest
 
 from app.core.config import settings
+from app.services.form_extraction import DPSFormExtraction
 
 ADMIN = {"email": "admin@dps.edu.pk", "password": "TestPassword123!"}
 PASSWORD = "Synthetic-Pass-2026!"
@@ -25,6 +26,13 @@ async def create_staff(client, admin, email, role):
 def deterministic_ai(monkeypatch):
     monkeypatch.setattr(settings, "transcription_provider", "deterministic-test")
     monkeypatch.setattr(settings, "summarization_provider", "deterministic-test")
+
+    class DeterministicFormExtractor:
+        async def extract(self, transcript, summary):
+            return DPSFormExtraction(answers=[])
+
+    # Keep this integration test independent of external Groq credentials.
+    monkeypatch.setattr("app.workers.processor.DPSFormExtractor", DeterministicFormExtractor)
 
 
 async def test_full_review_cycle_with_correction(client, deterministic_ai):
