@@ -195,8 +195,7 @@ export function FormPanel({ interview, editable, canSubmit }: { interview: Inter
           <AlertDialogHeader>
             <AlertDialogTitle>Submit this interview for principal review?</AlertDialogTitle>
             <AlertDialogDescription>
-              You confirm that you have checked every field against the conversation and the transcript. After submission the transcript and form are locked unless the principal
-              requests a correction.
+              You confirm that you have reviewed the complete interview, including the available form answers, any blank or unclear fields, the transcript, and additional conversation. Fields do not need to be individually confirmed. After submission, the transcript and form are locked unless the principal requests a correction.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
