@@ -62,7 +62,7 @@ export const routes = [
               {
                 path: '/reviews',
                 element: (
-                  <RequireRole roles={['administrator', 'reviewer']}>
+                  <RequireRole roles={['administrator', 'reviewer', 'principal']}>
                     <InterviewListPage title="Review queue" description="Interviews submitted by interviewers for principal review." statuses={[...REVIEW_QUEUE_STATUSES, 'finalized']} />
                   </RequireRole>
                 ),
