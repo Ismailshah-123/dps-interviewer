@@ -31,7 +31,13 @@ jobs:
           cache-dependency-path: backend/pyproject.toml
       - name: Install backend and test dependencies
         run: python -m pip install -e ".[dev]"
-      - name: Test principal authorization
+      - name: Verify database migrations
+        env:
+          SECRET_KEY: "ci-only-secret-key-with-more-than-thirty-two-characters"
+          DATABASE_URL: "sqlite+aiosqlite:///./migration-check.db"
+          ENVIRONMENT: "test"
+        run: alembic upgrade head
+      - name: Test principal and end-to-end workflow
         run: python -m pytest tests/unit/test_principal_role.py tests/integration/test_workflow_api.py
 
   frontend-checks:
