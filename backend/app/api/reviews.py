@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_roles
 from app.db.session import get_db
-from app.models.models import Interview, InterviewForm, InterviewFormFieldValue, InterviewReview, InterviewStatus, Role, User
+from app.models.models import Interview, InterviewReview, InterviewStatus, Role, User
 from app.schemas.common import ReviewCreate, ReviewOut
 from app.services.workflow import transition
 from app.services.audit import record_audit
@@ -19,18 +19,6 @@ REVIEWABLE = {
     InterviewStatus.CORRECTION_REQUESTED.value,
     InterviewStatus.REVIEWED.value,
 }
-
-async def _form_ready_for_review(interview_id: UUID, db: AsyncSession) -> bool:
-    form = await db.scalar(select(InterviewForm).where(InterviewForm.interview_id == interview_id))
-    if not form:
-        return False
-    pending = await db.scalar(
-        select(InterviewFormFieldValue.id).where(
-            InterviewFormFieldValue.form_id == form.id,
-            InterviewFormFieldValue.review_status == "needs_review",
-        ).limit(1)
-    )
-    return pending is None
 
 @router.get("/{interview_id}", response_model=list[ReviewOut])
 async def review_history(interview_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
@@ -77,8 +65,7 @@ async def review(
         if interview.status == InterviewStatus.SUBMITTED.value:
             target = InterviewStatus.PRINCIPAL_REVIEW.value
         elif interview.status == InterviewStatus.PRINCIPAL_REVIEW.value:
-            if not await _form_ready_for_review(interview.id, db):
-                raise HTTPException(status_code=409, detail="All form fields must be reviewed before the interview can be marked reviewed")
+            # Principal approval applies to the complete interview record, not each field.
             target = InterviewStatus.REVIEWED.value
         else:
             raise HTTPException(status_code=409, detail="Interview must be submitted or in principal review")
