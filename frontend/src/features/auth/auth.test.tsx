@@ -51,6 +51,20 @@ describe('authentication flow', () => {
     expect(await screen.findByText(/enter your password/i)).toBeInTheDocument()
   })
 
+  it('toggles password visibility without submitting the form', async () => {
+    mockFetch((url) => (url.endsWith('/auth/refresh') ? json({ detail: 'Invalid refresh token' }, 401) : json({}, 404)))
+    renderApp('/login')
+    const password = await screen.findByLabelText(/password/i)
+    expect(password).toHaveAttribute('type', 'password')
+
+    await userEvent.click(screen.getByRole('button', { name: /show password/i }))
+    expect(password).toHaveAttribute('type', 'text')
+    expect(screen.getByRole('button', { name: /hide password/i })).toHaveAttribute('aria-pressed', 'true')
+
+    await userEvent.click(screen.getByRole('button', { name: /hide password/i }))
+    expect(password).toHaveAttribute('type', 'password')
+  })
+
   it('shows a generic message on bad credentials', async () => {
     mockFetch((url) => (url.endsWith('/auth/login') ? json({ detail: 'Invalid credentials' }, 401) : json({ detail: 'no' }, 401)))
     renderApp('/login')
