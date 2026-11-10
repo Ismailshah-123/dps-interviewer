@@ -172,7 +172,7 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     r = await client.get(f"/api/v1/forms/{iid}/pdf", headers=principal)
     assert r.status_code == 200 and r.content.startswith(b"%PDF")
     exported_text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(r.content)).pages)
-    assert "Additional conversation" in exported_text
+    assert "ADDITIONAL CONVERSATION" in exported_text.upper()
     assert "What are the school timings?" in exported_text
     assert "The school day starts at 8:00 AM." in exported_text
     assert (await client.get(f"/api/v1/forms/{iid}/pdf", headers=other)).status_code == 404
