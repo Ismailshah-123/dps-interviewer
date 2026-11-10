@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { Archive, AudioLines, Download, FileText, HardDrive, Play, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -20,22 +21,30 @@ export function StoragePage() {
     queryFn: () => api.storageAssets({ kind, q: appliedSearch || undefined, limit: 100 }),
     staleTime: 15_000,
   })
+  const playback = useQuery({
+    queryKey: ['admin-storage-url', selected?.kind, selected?.id],
+    queryFn: () => api.storageAssetUrl(selected!),
+    enabled: !!selected,
+    staleTime: 240_000,
+    retry: 1,
+  })
   const file = useQuery({
     queryKey: ['admin-storage-blob', selected?.kind, selected?.id],
     queryFn: () => api.storageAssetBlob(selected!),
-    enabled: !!selected,
+    enabled: !!selected && !playback.isPending && !playback.data?.url,
     staleTime: 60_000,
     retry: 1,
   })
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [blobPreviewUrl, setBlobPreviewUrl] = useState<string | null>(null)
+  const previewUrl = playback.data?.url ?? blobPreviewUrl
 
   useEffect(() => {
     if (!file.data) {
-      setPreviewUrl(null)
+      setBlobPreviewUrl(null)
       return
     }
     const url = URL.createObjectURL(file.data)
-    setPreviewUrl(url)
+    setBlobPreviewUrl(url)
     return () => URL.revokeObjectURL(url)
   }, [file.data])
 
@@ -52,8 +61,7 @@ export function StoragePage() {
       anchor.remove()
       URL.revokeObjectURL(url)
     } catch (error) {
-      // The query error remains visible in the preview panel.
-      console.error('Storage download failed', error)
+      toast.error(errorMessage(error))
     }
   }
 
@@ -144,7 +152,7 @@ export function StoragePage() {
             <CardDescription>{selected ? selected.filename : 'Select a file to inspect it securely.'}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {!selected ? <EmptyState title="Nothing selected" description="Choose a recording or PDF from the library." /> : file.isPending ? <LoadingRows rows={3} /> : file.isError ? <ErrorState error={file.error} onRetry={() => file.refetch()} /> : previewUrl && selected.kind === 'recording' ? (
+            {!selected ? <EmptyState title="Nothing selected" description="Choose a recording or PDF from the library." /> : playback.isPending || (!playback.data?.url && file.isPending) ? <LoadingRows rows={3} /> : playback.isError && file.isError ? <ErrorState error={file.error} onRetry={() => { void playback.refetch(); void file.refetch() }} /> : previewUrl && selected.kind === 'recording' ? (
               <div className="rounded-xl border bg-muted/30 p-4">
                 <div className="mb-3 flex items-center gap-2 text-sm font-medium"><AudioLines className="size-4" /> Recording playback</div>
                 <audio className="w-full" controls preload="metadata" src={previewUrl}>Your browser does not support audio playback.</audio>
@@ -164,7 +172,7 @@ export function StoragePage() {
                   <Button className="flex-1" onClick={() => void downloadSelected()} disabled={file.isPending}><Download /> Download file</Button>
                   <Button variant="outline" onClick={() => window.open(`/interviews/${selected.interview_id}`, '_self')}><Play /> Interview</Button>
                 </div>
-                {file.isError && <p className="text-xs text-destructive">{errorMessage(file.error)}</p>}
+                {(file.isError || playback.isError) && <p className="text-xs text-destructive">{errorMessage(file.error ?? playback.error)}</p>}
               </div>
             )}
           </CardContent>
