@@ -109,6 +109,15 @@ class R2PrivateStorage:
 
         return bool(validator(header))
 
+    async def save_bytes(self, key: str, data: bytes, content_type: str) -> None:
+        await asyncio.to_thread(
+            self.client.put_object,
+            Bucket=self.bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+        )
+
     def open(self, key: str):
         response = self.client.get_object(
             Bucket=self.bucket,
