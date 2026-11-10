@@ -59,6 +59,12 @@ class LocalPrivateStorage:
             raise ValueError("Empty recording")
         return total, digest.hexdigest(), path
 
+    async def save_bytes(self, key: str, data: bytes, content_type: str) -> None:
+        path = self.path_for(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        import asyncio
+        await asyncio.to_thread(path.write_bytes, data)
+
     def open(self, key: str):
         return self.path_for(key).open("rb")
 
