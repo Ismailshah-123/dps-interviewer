@@ -75,7 +75,7 @@
     font-feature-settings: "cv11", "ss01";
   }
   h1, h2, h3 {
-    font-family: var(--font-display);
+    font-family: "Manrope", "DM Sans", ui-sans-serif, sans-serif;
     letter-spacing: -0.025em;
   }
   /* Urdu (Perso-Arabic) text keeps its own direction and a readable line height. */
