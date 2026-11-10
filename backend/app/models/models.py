@@ -31,7 +31,8 @@ class UTCDateTime(TypeDecorator):
 class Role(StrEnum):
     ADMIN = "administrator"
     INTERVIEWER = "interviewer"
-    REVIEWER = "reviewer"
+    REVIEWER = "reviewer"  # Legacy role retained for existing accounts.
+    PRINCIPAL = "principal"
 
 class User(Base):
     __tablename__ = "users"
