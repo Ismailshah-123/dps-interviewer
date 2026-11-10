@@ -68,11 +68,17 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     r2 = await client.post(f"/api/v1/recordings/{iid}", headers=interviewer, files={"file": ("again.webm", FAKE_WEBM, "audio/webm")})
     assert r2.status_code in (201, 409)
 
-    r = await client.post("/api/v1/processing/run-once", headers=admin)
-    assert r.status_code == 200
-    await client.post("/api/v1/processing/run-once", headers=admin)
-    status = (await client.get(f"/api/v1/processing/{iid}", headers=interviewer)).json()
-    assert status["interview_status"] == "needs_review", status
+    # The pipeline has separate transcription, summary and form-extraction jobs.
+    # Run until the terminal draft state instead of assuming a fixed number of worker batches.
+    status = None
+    for _ in range(6):
+        r = await client.post("/api/v1/processing/run-once", headers=admin)
+        assert r.status_code == 200, r.text
+        status = (await client.get(f"/api/v1/processing/{iid}", headers=interviewer)).json()
+        if status["interview_status"] == "needs_review":
+            break
+        assert status["interview_status"] != "failed", status
+    assert status and status["interview_status"] == "needs_review", status
     assert len([j for j in status["jobs"] if j["type"] == "transcription"]) == 1
 
     transcript = (await client.get(f"/api/v1/transcriptions/{iid}", headers=interviewer)).json()
