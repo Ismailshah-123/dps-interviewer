@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Navigate, useLocation, useNavigate } from 'react-router'
-import { KeyRound, ShieldCheck } from 'lucide-react'
+import { Eye, EyeOff, KeyRound, ShieldCheck } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,6 +26,7 @@ export function LoginPage() {
   const location = useLocation()
   const [error, setError] = useState<string | null>(null)
   const [resetOpen, setResetOpen] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const { register, handleSubmit, formState } = useForm<Values>({ resolver: zodResolver(schema) })
   const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
 
@@ -86,7 +87,26 @@ export function LoginPage() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" autoComplete="current-password" aria-invalid={!!formState.errors.password} {...register('password')} />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    aria-invalid={!!formState.errors.password}
+                    className="pr-11"
+                    {...register('password')}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((visible) => !visible)}
+                    className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                    aria-controls="password"
+                  >
+                    {showPassword ? <EyeOff className="size-4" aria-hidden="true" /> : <Eye className="size-4" aria-hidden="true" />}
+                  </button>
+                </div>
                 {formState.errors.password && <p className="text-xs text-destructive">{formState.errors.password.message}</p>}
               </div>
               <Button type="submit" className="w-full" disabled={formState.isSubmitting}>

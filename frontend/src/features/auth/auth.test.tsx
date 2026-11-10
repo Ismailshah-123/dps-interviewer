@@ -51,11 +51,25 @@ describe('authentication flow', () => {
     expect(await screen.findByText(/enter your password/i)).toBeInTheDocument()
   })
 
+  it('toggles password visibility without submitting the form', async () => {
+    mockFetch((url) => (url.endsWith('/auth/refresh') ? json({ detail: 'Invalid refresh token' }, 401) : json({}, 404)))
+    renderApp('/login')
+    const password = await screen.findByLabelText(/^password$/i)
+    expect(password).toHaveAttribute('type', 'password')
+
+    await userEvent.click(screen.getByRole('button', { name: /show password/i }))
+    expect(password).toHaveAttribute('type', 'text')
+    expect(screen.getByRole('button', { name: /hide password/i })).toHaveAttribute('aria-pressed', 'true')
+
+    await userEvent.click(screen.getByRole('button', { name: /hide password/i }))
+    expect(password).toHaveAttribute('type', 'password')
+  })
+
   it('shows a generic message on bad credentials', async () => {
     mockFetch((url) => (url.endsWith('/auth/login') ? json({ detail: 'Invalid credentials' }, 401) : json({ detail: 'no' }, 401)))
     renderApp('/login')
     await userEvent.type(await screen.findByLabelText(/email/i), 'someone@dps.example.com')
-    await userEvent.type(screen.getByLabelText(/password/i), 'wrong-password')
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'wrong-password')
     await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/email or password is incorrect/i)
   })
@@ -63,6 +77,7 @@ describe('authentication flow', () => {
   it.each([
     ['interviewer', ['Dashboard', 'Candidates', 'Interviews'], ['Review queue', 'Staff accounts', 'Audit log']],
     ['reviewer', ['Dashboard', 'Review queue'], ['Interviews', 'Staff accounts']],
+    ['principal', ['Dashboard', 'Candidates', 'Review queue'], ['Interviews', 'Staff accounts']],
     ['administrator', ['Staff accounts', 'Audit log', 'Processing jobs', 'Review queue'], []],
   ])('shows %s navigation only for permitted areas', async (role, visible, hidden) => {
     mockFetch((url) => {

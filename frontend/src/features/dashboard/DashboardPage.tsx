@@ -34,7 +34,8 @@ export function DashboardPage() {
   const { user } = useAuth()
   const stats = useQuery({ queryKey: ['interview-stats'], queryFn: api.interviewStats, refetchInterval: 15000 })
   const candidates = useQuery({ queryKey: ['candidates', { limit: 1 }], queryFn: () => api.candidates({ limit: 1 }) })
-  const isReviewer = user?.role === 'reviewer'
+  const isReviewer = user?.role === 'reviewer' || user?.role === 'principal'
+  const canStartInterview = user?.role === 'administrator' || user?.role === 'interviewer'
   const recent = useQuery({
     queryKey: ['interviews', 'recent', user?.role],
     queryFn: () => api.interviews({ limit: 8, status: isReviewer ? REVIEW_QUEUE_STATUSES : undefined }),
@@ -51,7 +52,7 @@ export function DashboardPage() {
             : 'Overview of interviews visible to your account.'
         }
         actions={
-          user?.role !== 'reviewer' && (
+          canStartInterview && (
             <Button asChild>
               <Link to="/candidates">
                 Start an interview <ArrowRight />
@@ -98,7 +99,7 @@ export function DashboardPage() {
           ) : recent.isError ? (
             <ErrorState error={recent.error} onRetry={() => recent.refetch()} />
           ) : recent.data.items.length === 0 ? (
-            <EmptyState title="Nothing here yet" description={isReviewer ? 'No interviews are waiting for review.' : 'Create a candidate and start an interview to begin.'} />
+            <EmptyState title="Nothing here yet" description={isReviewer ? 'No interviews are waiting for principal review.' : 'Create a candidate and start an interview to begin.'} />
           ) : (
             <Table>
               <TableHeader>

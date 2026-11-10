@@ -109,12 +109,41 @@ class R2PrivateStorage:
 
         return bool(validator(header))
 
+    async def save_bytes(self, key: str, data: bytes, content_type: str) -> None:
+        await asyncio.to_thread(
+            self.client.put_object,
+            Bucket=self.bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+        )
+
     def open(self, key: str):
         response = self.client.get_object(
             Bucket=self.bucket,
             Key=key,
         )
         return response["Body"]
+
+    def presign_get(self, key: str, expires_in: int = 300) -> str:
+        return self.client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self.bucket, "Key": key},
+            ExpiresIn=max(60, min(expires_in, 900)),
+        )
+
+    def open_range(self, key: str, start: int, end: int | None = None):
+        head = self.client.head_object(Bucket=self.bucket, Key=key)
+        size = int(head["ContentLength"])
+        if start < 0 or start >= size or (end is not None and end < start):
+            raise ValueError("Invalid byte range")
+        last = min(end if end is not None else size - 1, size - 1)
+        response = self.client.get_object(
+            Bucket=self.bucket,
+            Key=key,
+            Range=f"bytes={start}-{last}",
+        )
+        return response["Body"], size, last
 
     def delete(self, key: str):
         self.client.delete_object(

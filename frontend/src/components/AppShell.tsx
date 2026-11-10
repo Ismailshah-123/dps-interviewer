@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, NavLink, Outlet, useLocation } from 'react-router'
-import { ClipboardCheck, FileClock, GraduationCap, LayoutDashboard, LogOut, Menu, Mic, ScrollText, Settings, ShieldCheck, Users } from 'lucide-react'
+import { ClipboardCheck, FileClock, GraduationCap, HardDrive, LayoutDashboard, LogOut, Menu, Mic, ScrollText, Settings, ShieldCheck, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useAuth } from '@/features/auth/AuthProvider'
@@ -19,11 +19,12 @@ interface NavItem {
 
 // Navigation is a convenience only; every route and API call is authorized by the backend.
 export const NAV: NavItem[] = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['administrator', 'interviewer', 'reviewer'] },
-  { to: '/candidates', label: 'Candidates', icon: GraduationCap, roles: ['administrator', 'interviewer', 'reviewer'] },
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['administrator', 'interviewer', 'reviewer', 'principal'] },
+  { to: '/candidates', label: 'Candidates', icon: GraduationCap, roles: ['administrator', 'interviewer', 'reviewer', 'principal'] },
   { to: '/interviews', label: 'Interviews', icon: Mic, roles: ['administrator', 'interviewer'] },
-  { to: '/reviews', label: 'Review queue', icon: ClipboardCheck, roles: ['administrator', 'reviewer'] },
+  { to: '/reviews', label: 'Review queue', icon: ClipboardCheck, roles: ['administrator', 'reviewer', 'principal'] },
   { to: '/admin/users', label: 'Staff accounts', icon: Users, roles: ['administrator'] },
+  { to: '/admin/storage', label: 'Storage library', icon: HardDrive, roles: ['administrator'] },
   { to: '/admin/templates', label: 'Templates', icon: ScrollText, roles: ['administrator'] },
   { to: '/admin/jobs', label: 'Processing jobs', icon: FileClock, roles: ['administrator'] },
   { to: '/admin/audit', label: 'Audit log', icon: ShieldCheck, roles: ['administrator'] },
@@ -80,7 +81,7 @@ export function AppShell() {
   const meta = useQuery({ queryKey: ['meta'], queryFn: api.meta, staleTime: Infinity })
   const external = meta.data?.external_ai ?? []
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[256px_1fr]">
+    <div className="app-shell min-h-screen lg:grid lg:grid-cols-[256px_1fr]">
       <aside className="sticky top-0 hidden h-screen lg:block">
         <SidebarContent />
       </aside>
@@ -107,13 +108,13 @@ export function AppShell() {
           </nav>
           {external.length > 0 ? (
             <div role="status" className="ml-auto rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900">
-              Cloud AI on ({external.join(', ')}): transcript text leaves this computer. Synthetic interviews only.
+              External processing is enabled. Interview transcript data is sent to an approved service for processing.
             </div>
           ) : (
             <div className="ml-auto text-xs text-muted-foreground">Demo environment · synthetic data only</div>
           )}
         </header>
-        <main className="mx-auto max-w-7xl px-4 py-6 lg:px-8 lg:py-8">
+        <main className="page-enter mx-auto max-w-7xl px-4 py-6 lg:px-8 lg:py-8">
           <Outlet />
         </main>
       </div>

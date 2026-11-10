@@ -2,8 +2,9 @@
 import pytest
 
 from app.core.config import settings
+from app.services.form_extraction import DPSFormExtraction
 
-ADMIN = {"email": "admin@dps.example.com", "password": "TestPassword123!"}
+ADMIN = {"email": "admin@dps.edu.pk", "password": "TestPassword123!"}
 PASSWORD = "Synthetic-Pass-2026!"
 # Minimal EBML header: enough to pass the WebM signature check. Content is synthetic, not real audio.
 FAKE_WEBM = b"\x1a\x45\xdf\xa3" + b"\x00" * 256
@@ -26,12 +27,19 @@ def deterministic_ai(monkeypatch):
     monkeypatch.setattr(settings, "transcription_provider", "deterministic-test")
     monkeypatch.setattr(settings, "summarization_provider", "deterministic-test")
 
+    class DeterministicFormExtractor:
+        async def extract(self, transcript, summary):
+            return DPSFormExtraction(answers=[])
+
+    # Keep this integration test independent of external Groq credentials.
+    monkeypatch.setattr("app.workers.processor.DPSFormExtractor", DeterministicFormExtractor)
+
 
 async def test_full_review_cycle_with_correction(client, deterministic_ai):
     admin = await login(client, ADMIN["email"], ADMIN["password"])
     await create_staff(client, admin, "wf.interviewer@dps.example.com", "interviewer")
     await create_staff(client, admin, "wf.other@dps.example.com", "interviewer")
-    await create_staff(client, admin, "wf.principal@dps.example.com", "reviewer")
+    await create_staff(client, admin, "wf.principal@dps.example.com", "principal")
     interviewer = await login(client, "wf.interviewer@dps.example.com")
     other = await login(client, "wf.other@dps.example.com")
     principal = await login(client, "wf.principal@dps.example.com")
@@ -68,11 +76,17 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     r2 = await client.post(f"/api/v1/recordings/{iid}", headers=interviewer, files={"file": ("again.webm", FAKE_WEBM, "audio/webm")})
     assert r2.status_code in (201, 409)
 
-    r = await client.post("/api/v1/processing/run-once", headers=admin)
-    assert r.status_code == 200
-    await client.post("/api/v1/processing/run-once", headers=admin)
-    status = (await client.get(f"/api/v1/processing/{iid}", headers=interviewer)).json()
-    assert status["interview_status"] == "needs_review", status
+    # The pipeline has separate transcription, summary and form-extraction jobs.
+    # Run until the terminal draft state instead of assuming a fixed number of worker batches.
+    status = None
+    for _ in range(6):
+        r = await client.post("/api/v1/processing/run-once", headers=admin)
+        assert r.status_code == 200, r.text
+        status = (await client.get(f"/api/v1/processing/{iid}", headers=interviewer)).json()
+        if status["interview_status"] == "needs_review":
+            break
+        assert status["interview_status"] != "failed", status
+    assert status and status["interview_status"] == "needs_review", status
     assert len([j for j in status["jobs"] if j["type"] == "transcription"]) == 1
 
     transcript = (await client.get(f"/api/v1/transcriptions/{iid}", headers=interviewer)).json()
@@ -85,8 +99,9 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     # Professional-judgement fields are never filled by AI.
     assert fields["interviewer_observations"]["value"]["text"] == ""
     assert fields["interviewer_observations"]["value"]["source"] == "manual_required"
-    # Absent information is flagged, not invented.
-    assert fields["follow_up_questions"]["value"]["text"] == "Not mentioned"
+    # An unanswered form field stays empty and is explicitly marked as not mentioned.
+    assert fields["q1a_ideal_school"]["value"]["text"] == ""
+    assert fields["q1a_ideal_school"]["value"]["source"] == "not_mentioned"
 
     # Submission is blocked until every field is confirmed by the interviewer.
     r = await client.post(f"/api/v1/interviews/{iid}/submit", headers=interviewer)
@@ -101,7 +116,7 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
             r = await client.post(f"/api/v1/forms/{form_id}/fields/{fid}/confirm", headers=interviewer)
             assert r.status_code == 200 and r.json()["human_edited"] is False
     # Other interviewer cannot edit evidence on this form.
-    r = await client.patch(f"/api/v1/forms/{form_id}/fields/interview_overview", headers=other, json={"value": {"text": "tampered"}})
+    r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=other, json={"value": {"text": "tampered"}})
     assert r.status_code == 404
 
     r = await client.post(f"/api/v1/interviews/{iid}/submit", headers=interviewer)
@@ -109,11 +124,11 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     assert r.json()["status"] == "submitted"
 
     # After submission evidence is frozen for the interviewer.
-    r = await client.patch(f"/api/v1/forms/{form_id}/fields/interview_overview", headers=interviewer, json={"value": {"text": "late edit"}})
+    r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=interviewer, json={"value": {"text": "late edit"}})
     assert r.status_code == 409
 
     # Reviewer: cannot edit, can review; correction requires remarks.
-    r = await client.patch(f"/api/v1/forms/{form_id}/fields/interview_overview", headers=principal, json={"value": {"text": "x"}})
+    r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=principal, json={"value": {"text": "x"}})
     assert r.status_code == 403
     assert (await client.post(f"/api/v1/reviews/{iid}", headers=interviewer, json={"action": "review"})).status_code == 403
     assert (await client.post(f"/api/v1/reviews/{iid}", headers=principal, json={"action": "review"})).json()["status"] == "principal_review"
@@ -123,7 +138,7 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     assert r.json()["status"] == "correction_requested"
 
     # Interviewer corrects and resubmits.
-    r = await client.patch(f"/api/v1/forms/{form_id}/fields/interview_overview", headers=interviewer, json={"value": {"text": "Clarified synthetic overview."}})
+    r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=interviewer, json={"value": {"text": "Clarified synthetic overview."}})
     assert r.status_code == 200
     r = await client.post(f"/api/v1/interviews/{iid}/submit", headers=interviewer)
     assert r.status_code == 200, r.text
@@ -134,6 +149,9 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
 
     history = (await client.get(f"/api/v1/reviews/{iid}", headers=principal)).json()
     assert [h["action"] for h in history] == ["review", "request_correction", "review", "review", "finalize"]
+    assert all(h["reviewer_name"] == "Synthetic principal" for h in history)
+    assert history[-1]["status_from"] == "reviewed"
+    assert history[-1]["status_to"] == "finalized"
     assert (await client.get(f"/api/v1/reviews/{iid}", headers=other)).status_code == 404
 
     r = await client.get(f"/api/v1/forms/{iid}/pdf", headers=principal)
@@ -141,6 +159,37 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     assert (await client.get(f"/api/v1/forms/{iid}/pdf", headers=other)).status_code == 404
     assert (await client.get(f"/api/v1/recordings/{iid}/download", headers=other)).status_code == 404
     assert (await client.get(f"/api/v1/recordings/{iid}/download", headers=principal)).status_code == 200
+
+    # The finalization action archives the approved PDF and exposes assets only to administrators.
+    assert (await client.get("/api/v1/admin/storage", headers=principal)).status_code == 403
+    library = await client.get("/api/v1/admin/storage?kind=pdf", headers=admin)
+    assert library.status_code == 200, library.text
+    pdf_assets = [item for item in library.json()["items"] if item["interview_id"] == iid]
+    assert len(pdf_assets) == 1
+    assert pdf_assets[0]["filename"].endswith(".pdf")
+    fallback_url = await client.get(
+        f"/api/v1/admin/storage/pdf/{pdf_assets[0]['id']}/url", headers=admin
+    )
+    assert fallback_url.status_code == 200
+    assert fallback_url.json() == {"url": None, "expires_in": None}
+    pdf_preview = await client.get(
+        f"/api/v1/admin/storage/pdf/{pdf_assets[0]['id']}",
+        headers={**admin, "Range": "bytes=0-9"},
+    )
+    assert pdf_preview.status_code == 206
+    assert pdf_preview.headers["content-range"].startswith("bytes 0-9/")
+    assert pdf_preview.content.startswith(b"%PDF") or len(pdf_preview.content) == 10
+
+    recording_library = await client.get("/api/v1/admin/storage?kind=recording", headers=admin)
+    assert recording_library.status_code == 200
+    recording_assets = [item for item in recording_library.json()["items"] if item["interview_id"] == iid]
+    assert len(recording_assets) == 1
+    recording_preview = await client.get(
+        f"/api/v1/admin/storage/recording/{recording_assets[0]['id']}",
+        headers={**admin, "Range": "bytes=0-9"},
+    )
+    assert recording_preview.status_code == 206
+    assert len(recording_preview.content) == 10
 
     stats = (await client.get("/api/v1/interviews/stats", headers=interviewer)).json()
     assert stats["by_status"].get("finalized", 0) >= 1

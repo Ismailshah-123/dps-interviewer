@@ -1,11 +1,18 @@
-from fastapi import APIRouter, Depends, Query
+import asyncio
+import os
+import re
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import require_roles
 from app.db.session import get_db
 from app.services.retention import purge_old_recordings
 from app.services.audit import record_audit
-from app.models.models import AuditEvent, ProcessingJob, Role, User
+from app.models.models import AuditEvent, Candidate, Interview, ProcessingJob, Recording, StoredDocument, Role, User
+from app.services.storage.factory import get_storage
+from app.services.pdf.archive import create_final_interview_pdf
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 @router.get("/jobs")
@@ -62,3 +69,276 @@ async def retry_job(job_id: str, db: AsyncSession = Depends(get_db), admin: User
     await record_audit(db, actor_user_id=admin.id, action="processing.admin_retry", resource_type="processing_job", resource_id=job.id)
     await db.commit()
     return {"id": str(job.id), "status": job.status, "message": "Job requeued"}
+
+
+@router.get("/storage/unarchived-interviews")
+async def unarchived_finalized_interviews(
+    q: str | None = Query(default=None, max_length=120),
+    limit: int = Query(50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_roles(Role.ADMIN.value)),
+):
+    archived_document = (
+        select(StoredDocument.id)
+        .where(
+            StoredDocument.interview_id == Interview.id,
+            StoredDocument.document_type == "final_interview_pdf",
+        )
+        .exists()
+    )
+    stmt = (
+        select(Interview, Candidate)
+        .join(Candidate, Candidate.id == Interview.candidate_id)
+        .where(Interview.status == "finalized", ~archived_document)
+        .order_by(Interview.finalized_at.desc())
+        .limit(limit)
+    )
+    if q:
+        term = f"%{q.strip()}%"
+        stmt = stmt.where(Candidate.name.ilike(term) | Candidate.reference_number.ilike(term))
+    rows = (await db.execute(stmt)).all()
+    items = [
+        {
+            "interview_id": str(interview.id),
+            "candidate_name": candidate.name,
+            "candidate_reference": candidate.reference_number,
+            "finalized_at": interview.finalized_at,
+        }
+        for interview, candidate in rows
+    ]
+    return {"items": items, "meta": {"total": len(items), "limit": limit}}
+
+
+@router.post("/storage/archive/{interview_id}")
+async def archive_existing_finalized_interview(
+    interview_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_roles(Role.ADMIN.value)),
+):
+    from uuid import UUID
+    try:
+        uid = UUID(interview_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Interview not found") from exc
+    interview = await db.get(Interview, uid)
+    if interview is None:
+        raise HTTPException(status_code=404, detail="Interview not found")
+    if interview.status != "finalized":
+        raise HTTPException(status_code=409, detail="Only finalized interviews can be archived")
+    try:
+        document = await create_final_interview_pdf(db, interview, admin)
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await db.commit()
+    await db.refresh(document)
+    return {
+        "id": str(document.id),
+        "interview_id": str(document.interview_id),
+        "filename": document.original_filename,
+        "size_bytes": document.size_bytes,
+        "version_number": document.version_number,
+        "created_at": document.created_at,
+    }
+
+
+@router.get("/storage")
+async def storage_library(
+    kind: str = Query(default="all", pattern="^(all|recording|pdf)$"),
+    q: str | None = Query(default=None, max_length=120),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_roles(Role.ADMIN.value)),
+):
+    assets = []
+    total = 0
+    fetch_limit = skip + limit
+
+    if kind in {"all", "recording"}:
+        stmt = (
+            select(Recording, Interview, Candidate)
+            .join(Interview, Interview.id == Recording.interview_id)
+            .join(Candidate, Candidate.id == Interview.candidate_id)
+        )
+        count_stmt = (
+            select(func.count(Recording.id))
+            .join(Interview, Interview.id == Recording.interview_id)
+            .join(Candidate, Candidate.id == Interview.candidate_id)
+        )
+        if q:
+            term = f"%{q.strip()}%"
+            predicate = (
+                Candidate.name.ilike(term)
+                | Candidate.reference_number.ilike(term)
+                | Recording.original_filename.ilike(term)
+            )
+            stmt = stmt.where(predicate)
+            count_stmt = count_stmt.where(predicate)
+        total += int(await db.scalar(count_stmt) or 0)
+        rows = (
+            await db.execute(
+                stmt.order_by(Recording.created_at.desc()).limit(fetch_limit)
+            )
+        ).all()
+        assets.extend({
+            "id": str(record.id), "kind": "recording", "interview_id": str(interview.id),
+            "candidate_reference": candidate.reference_number, "candidate_name": candidate.name,
+            "filename": record.original_filename, "mime_type": record.mime_type,
+            "size_bytes": record.size_bytes, "created_at": record.created_at,
+            "version_number": None,
+        } for record, interview, candidate in rows)
+
+    if kind in {"all", "pdf"}:
+        stmt = (
+            select(StoredDocument, Interview, Candidate)
+            .join(Interview, Interview.id == StoredDocument.interview_id)
+            .join(Candidate, Candidate.id == Interview.candidate_id)
+        )
+        count_stmt = (
+            select(func.count(StoredDocument.id))
+            .join(Interview, Interview.id == StoredDocument.interview_id)
+            .join(Candidate, Candidate.id == Interview.candidate_id)
+        )
+        if q:
+            term = f"%{q.strip()}%"
+            predicate = (
+                Candidate.name.ilike(term)
+                | Candidate.reference_number.ilike(term)
+                | StoredDocument.original_filename.ilike(term)
+            )
+            stmt = stmt.where(predicate)
+            count_stmt = count_stmt.where(predicate)
+        total += int(await db.scalar(count_stmt) or 0)
+        rows = (
+            await db.execute(
+                stmt.order_by(StoredDocument.created_at.desc()).limit(fetch_limit)
+            )
+        ).all()
+        assets.extend({
+            "id": str(record.id), "kind": "pdf", "interview_id": str(interview.id),
+            "candidate_reference": candidate.reference_number, "candidate_name": candidate.name,
+            "filename": record.original_filename, "mime_type": record.mime_type,
+            "size_bytes": record.size_bytes, "created_at": record.created_at,
+            "version_number": record.version_number,
+        } for record, interview, candidate in rows)
+
+    assets.sort(key=lambda item: item["created_at"], reverse=True)
+    return {
+        "items": assets[skip:skip + limit],
+        "meta": {"total": total, "skip": skip, "limit": limit, "has_more": skip + limit < total},
+    }
+
+
+@router.get("/storage/{kind}/{asset_id}/url")
+async def storage_asset_playback_url(
+    kind: str,
+    asset_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_roles(Role.ADMIN.value)),
+):
+    from uuid import UUID
+    if kind not in {"recording", "pdf"}:
+        raise HTTPException(status_code=404, detail="Storage item not found")
+    try:
+        uid = UUID(asset_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Storage item not found") from exc
+    item = await db.get(Recording if kind == "recording" else StoredDocument, uid)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Storage item not found")
+
+    storage = get_storage()
+    presign = getattr(storage, "presign_get", None)
+    if presign is None:
+        return {"url": None, "expires_in": None}
+    url = await asyncio.to_thread(presign, item.storage_key, 900)
+    await record_audit(
+        db,
+        actor_user_id=admin.id,
+        action="storage.preview_url_issued",
+        resource_type=kind,
+        resource_id=item.id,
+        metadata={"expires_in": 900},
+    )
+    await db.commit()
+    return {"url": url, "expires_in": 900}
+
+
+@router.get("/storage/{kind}/{asset_id}")
+async def stream_storage_asset(
+    kind: str,
+    asset_id: str,
+    request: Request,
+    disposition: str = Query(default="inline", pattern="^(inline|attachment)$"),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_roles(Role.ADMIN.value)),
+):
+    from uuid import UUID
+    if kind not in {"recording", "pdf"}:
+        raise HTTPException(status_code=404, detail="Storage item not found")
+    try:
+        uid = UUID(asset_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Storage item not found") from exc
+
+    if kind == "recording":
+        item = await db.get(Recording, uid)
+    else:
+        item = await db.get(StoredDocument, uid)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Storage item not found")
+
+    storage = get_storage()
+    range_header = request.headers.get("range")
+    start, end = 0, None
+    partial = False
+    if range_header:
+        match = re.fullmatch(r"bytes=(\d+)-(\d*)", range_header.strip())
+        if not match:
+            raise HTTPException(status_code=416, detail="Invalid byte range")
+        start = int(match.group(1))
+        end = int(match.group(2)) if match.group(2) else None
+        partial = True
+
+    try:
+        if partial:
+            body, total_size, last = await asyncio.to_thread(storage.open_range, item.storage_key, start, end)
+            length = last - start + 1
+        else:
+            body = await asyncio.to_thread(storage.open, item.storage_key)
+            total_size = item.size_bytes
+            length = total_size
+            last = total_size - 1
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=416, detail="Requested byte range is not available") from exc
+
+    safe_name = re.sub(r"[^A-Za-z0-9._ -]", "_", os.path.basename(item.original_filename))[:180] or "download"
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(length),
+        "Content-Disposition": f'{disposition}; filename="{safe_name}"',
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    }
+    status_code = 200
+    if partial:
+        headers["Content-Range"] = f"bytes {start}-{last}/{total_size}"
+        status_code = 206
+
+    def chunks():
+        try:
+            while True:
+                chunk = body.read(64 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            body.close()
+
+    return StreamingResponse(
+        chunks(),
+        status_code=status_code,
+        media_type=item.mime_type,
+        headers=headers,
+    )

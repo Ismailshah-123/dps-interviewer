@@ -1,4 +1,4 @@
-export type Role = 'administrator' | 'interviewer' | 'reviewer'
+export type Role = 'administrator' | 'interviewer' | 'reviewer' | 'principal'
 
 export interface User {
   id: string
@@ -91,6 +91,26 @@ export interface Recording {
   sha256: string
   duration_seconds: number | null
   created_at: string
+}
+
+export interface UnarchivedInterview {
+  interview_id: string
+  candidate_name: string
+  candidate_reference: string
+  finalized_at: string | null
+}
+
+export interface StorageAsset {
+  id: string
+  kind: 'recording' | 'pdf'
+  interview_id: string
+  candidate_reference: string
+  candidate_name: string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  created_at: string
+  version_number: number | null
 }
 
 export interface ProcessingJob {
@@ -224,9 +244,12 @@ export interface ReviewEntry {
   id: string
   interview_id: string
   reviewer_id: string
+  reviewer_name?: string | null
   action: ReviewAction
   remarks: string | null
   recommendation: string | null
+  status_from?: string | null
+  status_to?: string | null
   created_at: string
 }
 

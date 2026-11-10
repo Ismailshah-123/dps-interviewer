@@ -19,7 +19,7 @@ import { api, errorMessage } from '@/lib/api'
 import { ROLE_LABEL, formatDateTime } from '@/lib/status'
 import type { Role, User } from '@/lib/types'
 
-const ROLES: Role[] = ['interviewer', 'reviewer', 'administrator']
+const ROLES: Role[] = ['interviewer', 'principal', 'reviewer', 'administrator']
 
 export const staffSchema = z.object({
   full_name: z.string().trim().min(1, 'Name is required').max(200),
@@ -30,7 +30,7 @@ export const staffSchema = z.object({
     .regex(/[A-Z]/, 'Include an upper-case letter')
     .regex(/[a-z]/, 'Include a lower-case letter')
     .regex(/[0-9]/, 'Include a number'),
-  role: z.enum(['administrator', 'interviewer', 'reviewer']),
+  role: z.enum(['administrator', 'interviewer', 'reviewer', 'principal']),
 })
 type StaffValues = z.infer<typeof staffSchema>
 
