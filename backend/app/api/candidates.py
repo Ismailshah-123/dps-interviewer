@@ -6,11 +6,12 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.models import Candidate, User, Role
 from app.schemas.common import CandidateCreate, CandidateUpdate, CandidateOut, CandidatePage, PaginationMeta
+from app.services.authorization import REVIEW_ROLES
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
 
 def can_access(candidate: Candidate, user: User):
-    return user.role == Role.ADMIN.value or candidate.assigned_interviewer_id == user.id or user.role == Role.REVIEWER.value
+    return user.role == Role.ADMIN.value or candidate.assigned_interviewer_id == user.id or user.role in REVIEW_ROLES
 
 def datetime_now():
     from datetime import datetime, timezone
@@ -60,7 +61,7 @@ async def get_candidate(candidate_id: UUID, db: AsyncSession = Depends(get_db), 
 async def update_candidate(candidate_id: UUID, body: CandidateUpdate, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     candidate = await db.get(Candidate, candidate_id)
     if not candidate or not can_access(candidate, user): raise HTTPException(status_code=404, detail="Candidate not found")
-    if user.role == Role.REVIEWER.value: raise HTTPException(status_code=403, detail="Reviewer cannot edit candidates")
+    if user.role in REVIEW_ROLES: raise HTTPException(status_code=403, detail="Reviewers and principals cannot edit candidates")
     if body.assigned_interviewer_id:
         assigned = await db.get(User, body.assigned_interviewer_id)
         if not assigned or assigned.role != Role.INTERVIEWER.value or not assigned.is_active:
