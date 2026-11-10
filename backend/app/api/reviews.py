@@ -9,6 +9,7 @@ from app.schemas.common import ReviewCreate, ReviewOut
 from app.services.workflow import transition
 from app.services.audit import record_audit
 from app.services.authorization import assert_interview_access, REVIEW_ROLES
+from app.services.pdf.archive import create_final_interview_pdf
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
@@ -34,7 +35,27 @@ async def _form_ready_for_review(interview_id: UUID, db: AsyncSession) -> bool:
 @router.get("/{interview_id}", response_model=list[ReviewOut])
 async def review_history(interview_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     assert_interview_access(await db.get(Interview, interview_id), user)
-    return (await db.scalars(select(InterviewReview).where(InterviewReview.interview_id == interview_id).order_by(InterviewReview.created_at))).all()
+    rows = (await db.execute(
+        select(InterviewReview, User.full_name)
+        .join(User, User.id == InterviewReview.reviewer_id)
+        .where(InterviewReview.interview_id == interview_id)
+        .order_by(InterviewReview.created_at.asc())
+    )).all()
+    return [
+        {
+            "id": review.id,
+            "interview_id": review.interview_id,
+            "reviewer_id": review.reviewer_id,
+            "reviewer_name": reviewer_name,
+            "action": review.action,
+            "remarks": review.remarks,
+            "recommendation": review.recommendation,
+            "status_from": review.status_from,
+            "status_to": review.status_to,
+            "created_at": review.created_at,
+        }
+        for review, reviewer_name in rows
+    ]
 
 
 @router.post("/{interview_id}")
@@ -82,7 +103,15 @@ async def review(
         action=body.action,
         remarks=body.remarks,
         recommendation=body.recommendation,
+        status_from=previous_status,
+        status_to=target,
     ))
+    if body.action == "finalize":
+        try:
+            await create_final_interview_pdf(db, interview, user)
+        except ValueError as exc:
+            await db.rollback()
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
     await record_audit(
         db,
         actor_user_id=user.id,
