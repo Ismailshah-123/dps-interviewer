@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Download, Save, Send } from 'lucide-react'
+import { Download, Save, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
@@ -44,7 +44,6 @@ function FieldEditor({ formId, field, spec, editable }: { formId: string; field:
   const rtl = containsArabicScript(text)
   const onDone = () => qc.invalidateQueries({ queryKey: ['form'] })
   const save = useMutation({ mutationFn: () => api.updateField(formId, field.field_id, text), onSuccess: () => (toast.success('Field saved'), onDone()), onError: (e) => toast.error(errorMessage(e)) })
-  const confirm = useMutation({ mutationFn: () => api.confirmField(formId, field.field_id), onSuccess: onDone, onError: (e) => toast.error(errorMessage(e)) })
   const manualEmpty = field.value.source === 'manual_required' && !field.human_edited
   const id = `field-${field.field_id}`
   const label = spec?.label ?? field.field_id
@@ -57,7 +56,7 @@ function FieldEditor({ formId, field, spec, editable }: { formId: string; field:
           {spec?.required && <span className="text-destructive"> *</span>}
         </label>
         {sourceBadge(field)}
-        {field.review_status === 'reviewed' ? <ToneBadge tone="success">Confirmed</ToneBadge> : <ToneBadge tone="attention">Needs confirmation</ToneBadge>}
+        {field.review_status === 'reviewed' ? <ToneBadge tone="success">Reviewed</ToneBadge> : <ToneBadge tone="progress">Included in interview review</ToneBadge>}
       </div>
       {editable ? (
         <Textarea
@@ -85,11 +84,6 @@ function FieldEditor({ formId, field, spec, editable }: { formId: string; field:
           <Button size="sm" variant={dirty ? 'default' : 'outline'} disabled={!dirty || save.isPending} onClick={() => save.mutate()} aria-label={`Save field: ${label}`}>
             {save.isPending ? <Spinner /> : <Save />} Save edit
           </Button>
-          {field.review_status !== 'reviewed' && !dirty && (
-            <Button size="sm" variant="outline" disabled={confirm.isPending || manualEmpty} onClick={() => confirm.mutate()} title={manualEmpty ? 'Write this field first' : undefined} aria-label={`Confirm field: ${label}`}>
-              {confirm.isPending ? <Spinner /> : <Check />} Confirm as correct
-            </Button>
-          )}
           <span className="text-xs text-muted-foreground">Updated {formatDateTime(field.updated_at)}</span>
         </div>
       )}
@@ -102,6 +96,7 @@ export function FormPanel({ interview, editable, canSubmit }: { interview: Inter
   const [confirmOpen, setConfirmOpen] = useState(false)
   const form = useQuery({ queryKey: ['form', interview.id], queryFn: () => api.form(interview.id), retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 2 })
   const template = useQuery({ queryKey: ['template-version', interview.template_version_id], queryFn: () => api.templateVersion(interview.template_version_id!), enabled: !!interview.template_version_id, staleTime: Infinity })
+  const summary = useQuery({ queryKey: ['summary', interview.id], queryFn: () => api.summary(interview.id), retry: false })
   const submit = useMutation({
     mutationFn: () => api.submitInterview(interview.id),
     onSuccess: () => {
@@ -133,7 +128,7 @@ export function FormPanel({ interview, editable, canSubmit }: { interview: Inter
       <ErrorState error={form.error} onRetry={() => form.refetch()} />
     )
 
-  const pending = form.data.fields.filter((f) => f.review_status === 'needs_review').length
+  const additionalConversation = summary.data?.data.additional_conversation ?? []
   return (
     <Card>
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -149,16 +144,16 @@ export function FormPanel({ interview, editable, canSubmit }: { interview: Inter
             <Download /> PDF
           </Button>
           {canSubmit && (
-            <Button onClick={() => setConfirmOpen(true)} disabled={pending > 0}>
+            <Button onClick={() => setConfirmOpen(true)}>
               <Send /> {interview.status === 'correction_requested' ? 'Resubmit' : 'Submit for review'}
             </Button>
           )}
         </div>
       </CardHeader>
       <CardContent>
-        {canSubmit && pending > 0 && (
-          <p className="mb-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            {pending} field{pending === 1 ? '' : 's'} still need{pending === 1 ? 's' : ''} your confirmation or edit before submission.
+        {canSubmit && (
+          <p className="mb-2 text-sm text-muted-foreground">
+            Review the complete interview, including the transcript and any additional conversation below. You can submit once the interview-level review is complete; individual field confirmations are not required.
           </p>
         )}
         {sections.map(([section, fields]) => (
@@ -169,6 +164,31 @@ export function FormPanel({ interview, editable, canSubmit }: { interview: Inter
             ))}
           </section>
         ))}
+        <section className="mt-8 border-t pt-5">
+          <div className="mb-3">
+            <h3 className="text-sm font-semibold">Additional conversation</h3>
+            <p className="text-xs text-muted-foreground">Distinct follow-up questions and parent/interviewer exchanges that do not belong to the official DPS form. These are kept separate so the original form stays unchanged.</p>
+          </div>
+          {summary.isPending ? (
+            <p className="text-sm text-muted-foreground">Loading additional conversation…</p>
+          ) : additionalConversation.length ? (
+            <div className="space-y-4">
+              {additionalConversation.map((item, index) => (
+                <div key={index} className="rounded-lg border p-3">
+                  <p className="text-xs font-medium text-muted-foreground">Question {index + 1} · Asked by {item.asked_by}</p>
+                  <p className="mt-1 text-sm font-semibold" dir="auto">{item.question}</p>
+                  <p className="mt-2 text-xs font-medium text-muted-foreground">Answer · {item.answered_by}</p>
+                  <p className="mt-1 text-sm whitespace-pre-wrap" dir="auto">{item.answer || 'No clear answer captured'}</p>
+                  {item.evidence_quotes?.length > 0 && (
+                    <p className="mt-2 text-xs text-muted-foreground">Transcript evidence: {item.evidence_quotes.join(' · ')}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground italic">No additional question-and-answer exchanges were detected.</p>
+          )}
+        </section>
       </CardContent>
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
