@@ -17,6 +17,7 @@ import type {
   Role,
   Summary,
   StorageAsset,
+  UnarchivedInterview,
   TemplateSummary,
   TemplateVersion,
   Transcript,
@@ -277,6 +278,10 @@ export const api = {
   updateUser: (id: string, body: Partial<Pick<User, 'full_name' | 'role' | 'is_active'>>) => request<User>(`/users/${id}`, { method: 'PATCH', body }),
   storageAssets: (params: ListParams & { kind?: 'all' | 'recording' | 'pdf'; q?: string } = {}) =>
     request<Page<StorageAsset>>('/admin/storage', { query: { ...params } }),
+  unarchivedInterviews: (q?: string) =>
+    request<{ items: UnarchivedInterview[]; meta: { total: number; limit: number } }>('/admin/storage/unarchived-interviews', { query: { q } }),
+  archiveFinalizedPdf: (interviewId: string) =>
+    request<{ id: string; interview_id: string; filename: string; size_bytes: number; version_number: number; created_at: string }>(`/admin/storage/archive/${interviewId}`, { method: 'POST' }),
   storageAssetBlob: (asset: StorageAsset, disposition: 'inline' | 'attachment' = 'inline') =>
     requestBlob(`/admin/storage/${asset.kind}/${asset.id}?disposition=${disposition}`),
   storageAssetUrl: (asset: StorageAsset) =>
