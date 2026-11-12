@@ -20,7 +20,7 @@ def test_pdf_contains_metadata_labels_and_long_answers():
     pdf = InterviewPDFGenerator().generate("DPS Interview Assessment", "DPS-TEST-1", FIELDS, {"template_name": "Demo", "template_version": "1.0-demo", "status": "finalized", "form_revision": 2, "template_is_placeholder": True})
     assert pdf.startswith(b"%PDF")
     text = _text(pdf)
-    for expected in ("DPS-TEST-1", "1.0-demo", "finalized", "PLACEHOLDER TEMPLATE", "Not mentioned", "Entered or edited by staff", "AI-assisted documentation"):
+    for expected in ("DPS-TEST-1", "1.0-demo", "finalized", "PLACEHOLDER TEMPLATE", "Not mentioned", "Entered or edited by staff", "AI-assisted documentation", "must be reviewed by authorized staff"):
         assert expected in text, expected
     # The long answer flows onto further pages instead of being truncated.
     from pypdf import PdfReader
