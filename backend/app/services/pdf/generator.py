@@ -113,7 +113,7 @@ class InterviewPDFGenerator:
         table = Table([[Paragraph(escape(k), small), Paragraph(escape(str(v)), body)] for k, v in rows], colWidths=[120, 385])
         table.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.25, colors.HexColor("#dfe3ea")), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
         story += [table, Spacer(1, 8)]
-        notices = ["AI-assisted documentation. Content drafted from a machine transcript was reviewed by the interviewer; it is not an assessment score and makes no admission decision."]
+        notices = ["AI-assisted documentation. Machine-generated content must be reviewed by authorized staff before it is relied upon. This document is not an assessment score and makes no admission decision."]
         if meta.get("template_is_placeholder"):
             notices.append("PLACEHOLDER TEMPLATE: this layout is not the official DPS interview form.")
         if not unicode_ok:
