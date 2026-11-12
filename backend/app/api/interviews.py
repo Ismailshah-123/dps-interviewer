@@ -144,13 +144,20 @@ async def submit(interview_id: UUID, db: AsyncSession = Depends(get_db), user: U
         raise HTTPException(status_code=409, detail="Interview must be awaiting interviewer review or correction before submission")
     form = await db.scalar(select(InterviewForm).where(InterviewForm.interview_id == interview.id))
     if not form: raise HTTPException(status_code=409, detail="Interview form is not ready")
-    pending = int(await db.scalar(select(func.count(InterviewFormFieldValue.id)).where(InterviewFormFieldValue.form_id == form.id, InterviewFormFieldValue.review_status == "needs_review")) or 0)
-    if pending:
-        raise HTTPException(status_code=409, detail=f"{pending} form field(s) still need interviewer confirmation")
+    # Submission is an interview-level confirmation. Individual AI draft fields may
+    # remain unconfirmed; the interviewer reviews the form and conversation as a whole.
     resubmission = interview.status == InterviewStatus.CORRECTION_REQUESTED.value
     if resubmission:
         transition(interview, InterviewStatus.NEEDS_REVIEW.value)
         form.version_number += 1
     transition(interview, InterviewStatus.SUBMITTED.value)
-    await record_audit(db, actor_user_id=user.id, action='interview.resubmitted' if resubmission else 'interview.submitted', resource_type='interview', resource_id=interview.id)
+    interview.submitted_at = datetime.now(timezone.utc)
+    await record_audit(
+        db,
+        actor_user_id=user.id,
+        action='interview.resubmitted' if resubmission else 'interview.submitted',
+        resource_type='interview',
+        resource_id=interview.id,
+        metadata={"approval_scope": "whole_interview", "form_revision": form.version_number},
+    )
     await db.commit(); await db.refresh(interview); return (await _decorate(db, [interview]))[0]

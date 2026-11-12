@@ -43,8 +43,7 @@ export function ReviewPanel({ interview }: { interview: Interview }) {
           <CardHeader>
             <CardTitle className="text-base">Principal review</CardTitle>
             <CardDescription>
-              Check the form against the transcript and, where needed, the recording. AI-assisted content is not an objective assessment and carries no score. The admission decision
-              stays with authorized school personnel and is not recorded by this system.
+              Review the complete interview record against the transcript and, where needed, the recording. Approving confirms that the documentation has been reviewed; it does not make or record an admission decision.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -65,7 +64,7 @@ export function ReviewPanel({ interview }: { interview: Interview }) {
               {s === 'principal_review' && (
                 <>
                   <Button onClick={() => act.mutate('review')} disabled={act.isPending}>
-                    <CheckCheck /> Mark documentation reviewed
+                    <CheckCheck /> Approve interview documentation
                   </Button>
                   <Button variant="outline" onClick={() => act.mutate('request_correction')} disabled={act.isPending || !remarks.trim()} title={!remarks.trim() ? 'Write remarks first' : undefined}>
                     <Undo2 /> Request correction

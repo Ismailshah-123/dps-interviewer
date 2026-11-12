@@ -79,13 +79,21 @@ def _para_text(text: str) -> str:
 
 
 class InterviewPDFGenerator:
-    def generate(self, title: str, candidate_ref: str, fields: list[dict], meta: dict | None = None) -> bytes:
+    def generate(
+        self,
+        title: str,
+        candidate_ref: str,
+        fields: list[dict],
+        meta: dict | None = None,
+        additional_conversation: list[dict] | None = None,
+    ) -> bytes:
         meta = meta or {}
         font, bold, unicode_ok = _register_fonts()
         base = getSampleStyleSheet()
         body = ParagraphStyle("Body", parent=base["BodyText"], fontName=font, fontSize=10, leading=15)
         body_rtl = ParagraphStyle("BodyRTL", parent=body, alignment=TA_RIGHT)
         label = ParagraphStyle("Label", parent=body, fontName=bold, fontSize=10.5, spaceBefore=8, textColor=colors.HexColor("#1e2a44"))
+        label_rtl = ParagraphStyle("LabelRTL", parent=label, alignment=TA_RIGHT)
         small = ParagraphStyle("Small", parent=body, fontSize=8, leading=11, textColor=colors.HexColor("#5b6478"))
         section = ParagraphStyle("Section", parent=body, fontName=bold, fontSize=9, leading=12, spaceBefore=14, textColor=colors.HexColor("#5b6478"))
         heading = ParagraphStyle("H", parent=base["Title"], fontName=bold, fontSize=16, leading=20, alignment=0)
@@ -105,7 +113,7 @@ class InterviewPDFGenerator:
         table = Table([[Paragraph(escape(k), small), Paragraph(escape(str(v)), body)] for k, v in rows], colWidths=[120, 385])
         table.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.25, colors.HexColor("#dfe3ea")), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
         story += [table, Spacer(1, 8)]
-        notices = ["AI-assisted documentation. Content drafted from a machine transcript was reviewed by the interviewer; it is not an assessment score and makes no admission decision."]
+        notices = ["AI-assisted documentation. Machine-generated content must be reviewed by authorized staff before it is relied upon. This document is not an assessment score and makes no admission decision."]
         if meta.get("template_is_placeholder"):
             notices.append("PLACEHOLDER TEMPLATE: this layout is not the official DPS interview form.")
         if not unicode_ok:
@@ -127,6 +135,27 @@ class InterviewPDFGenerator:
                 source = SOURCE_LABEL["human"]
             if source:
                 story.append(Paragraph(escape(source), small))
+
+        exchanges = additional_conversation or []
+        story.append(Paragraph("ADDITIONAL CONVERSATION (OUTSIDE THE OFFICIAL FORM)", section))
+        if not exchanges:
+            story.append(Paragraph("No additional question-and-answer exchanges were captured.", body))
+        else:
+            for index, exchange in enumerate(exchanges, start=1):
+                question = str(exchange.get("question") or "").strip()
+                answer = str(exchange.get("answer") or "").strip()
+                asked_by = str(exchange.get("asked_by") or "unclear").replace("_", " ").title()
+                answered_by = str(exchange.get("answered_by") or "unclear").replace("_", " ").title()
+                question_style = label_rtl if ARABIC_RUN.search(question) else label
+                story.append(Paragraph(_para_text(f"{index}. {question}"), question_style))
+                story.append(Paragraph(_para_text(f"Question asked by: {asked_by}"), small))
+                story.append(Paragraph(_para_text(f"Answer: {answer or 'No clear answer captured'}"), body_rtl if ARABIC_RUN.search(answer) else body))
+                if answered_by != "Unclear":
+                    story.append(Paragraph(escape(f"Answered by: {answered_by}"), small))
+                quotes = exchange.get("evidence_quotes") or []
+                if quotes:
+                    evidence_text = "Transcript evidence: " + " | ".join(str(q) for q in quotes)
+                    story.append(Paragraph(_para_text(evidence_text), small))
 
         generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 

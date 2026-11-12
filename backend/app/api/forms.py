@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.models import Candidate, Interview, InterviewForm, InterviewFormFieldValue, InterviewTemplateVersion, Role, User
+from app.models.models import Candidate, Interview, InterviewForm, InterviewFormFieldValue, InterviewTemplateVersion, Summary, Role, User
 from app.schemas.common import FormOut, FormFieldOut, FormFieldUpdate
 from app.services.pdf.generator import InterviewPDFGenerator
 from app.services.audit import record_audit
@@ -78,5 +78,13 @@ async def pdf(interview_id: UUID, db: AsyncSession = Depends(get_db), user: User
             "finalized_at": interview.finalized_at.strftime("%Y-%m-%d %H:%M UTC") if interview.finalized_at else None}
     await record_audit(db, actor_user_id=user.id, action="form.exported", resource_type="interview", resource_id=interview.id, metadata={"format":"pdf"})
     await db.commit()
-    data = InterviewPDFGenerator().generate("DPS Interview Assessment", candidate.reference_number, fields, meta)
+    summary = await db.scalar(select(Summary).where(Summary.interview_id == interview.id))
+    additional_conversation = (summary.data or {}).get("additional_conversation", []) if summary else []
+    data = InterviewPDFGenerator().generate(
+        "DPS Interview Assessment",
+        candidate.reference_number,
+        fields,
+        meta,
+        additional_conversation=additional_conversation,
+    )
     return Response(content=data, media_type="application/pdf", headers={"Content-Disposition":f'attachment; filename="{candidate.reference_number}-interview.pdf"'})

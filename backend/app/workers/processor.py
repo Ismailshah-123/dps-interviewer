@@ -800,6 +800,22 @@ class JobProcessor:
                 for answer in result.answers
             }
 
+            # Keep off-template discussion separate from the school's fixed form fields.
+            # The transcript remains the source of truth; empty answers are preserved as unanswered.
+            summary_data = dict(summary.data or {})
+            summary_data["additional_conversation"] = [
+                {
+                    "question": item.question.strip(),
+                    "answer": item.answer.strip(),
+                    "asked_by": item.asked_by,
+                    "answered_by": item.answered_by,
+                    "evidence_quotes": item.evidence_quotes,
+                }
+                for item in result.additional_conversation
+                if item.question.strip()
+            ]
+            summary.data = summary_data
+
             candidate = await db.get(
                 Candidate,
                 interview.candidate_id,

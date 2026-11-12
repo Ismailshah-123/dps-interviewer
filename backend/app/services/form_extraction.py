@@ -31,9 +31,19 @@ class FormAnswer(BaseModel):
     text: str = Field(default="", max_length=20000)
     evidence_quotes: list[str] = Field(default_factory=list, max_length=5)
 
+class AdditionalConversationItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(default="", max_length=4000)
+    answer: str = Field(default="", max_length=12000)
+    asked_by: Literal["interviewer", "parent", "other", "unclear"] = "unclear"
+    answered_by: Literal["parent", "interviewer", "other", "unanswered", "unclear"] = "unclear"
+    evidence_quotes: list[str] = Field(default_factory=list, max_length=5)
+
+
 class DPSFormExtraction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     answers: list[FormAnswer] = Field(default_factory=list, max_length=19)
+    additional_conversation: list[AdditionalConversationItem] = Field(default_factory=list, max_length=40)
 
 
 def _schema() -> dict:
@@ -76,6 +86,10 @@ Rules:
 10. Do not include interviewer observations unless they were explicitly stated by the interviewer in the transcript; this model does not fill the manual interviewer-observations field.
 11. evidence_quotes should contain short exact transcript excerpts supporting the answer. Do not invent quotations.
 12. Return only fields that have an explicit answer. Empty fields may be omitted from answers.
+13. Also capture meaningful question-and-answer exchanges that do NOT belong to one of the supplied official form fields. Do not duplicate an exchange already represented by an official form field.
+14. Preserve the actual wording and meaning of each additional question. Include follow-up questions and questions asked by the parent/guardian. Set asked_by and answered_by using the speaker roles; use "unanswered" when no clear answer was given.
+15. Never invent a question, answer, speaker, or evidence quote. If a real question was asked but no clear answer followed, keep answer empty and answered_by="unanswered".
+16. Keep additional_conversation limited to distinct, relevant exchanges. Do not turn every sentence into a question. Evidence quotes must be short exact transcript excerpts.
 """
 
 class DPSFormExtractor:
@@ -90,7 +104,7 @@ class DPSFormExtractor:
         payload = {
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps({"transcript": transcript, "summary": summary, "field_ids": FIELD_IDS}, ensure_ascii=False)},
+                {"role": "user", "content": json.dumps({"transcript": transcript, "summary": summary, "field_ids": FIELD_IDS, "instruction": "Return official form answers and any distinct additional conversation Q&A."}, ensure_ascii=False)},
             ],
             "model": self.model_name,
             "temperature": 0,
