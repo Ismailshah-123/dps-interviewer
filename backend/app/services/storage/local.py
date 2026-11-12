@@ -69,8 +69,16 @@ class LocalPrivateStorage:
         import asyncio
         await asyncio.to_thread(path.write_bytes, data)
 
-    def open(self, key: str):
-        return self.path_for(key).open("rb")
+    async def stream(self, key: str, chunk_size: int = 1024 * 1024):
+        handle = await asyncio.to_thread(self.path_for(key).open, "rb")
+        try:
+            while True:
+                chunk = await asyncio.to_thread(handle.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            await asyncio.to_thread(handle.close)
 
     def open_range(self, key: str, start: int, end: int | None = None):
         path = self.path_for(key)
