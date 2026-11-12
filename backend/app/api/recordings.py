@@ -1,3 +1,5 @@
+import logging
+import os
 from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
@@ -14,6 +16,17 @@ from app.services.authorization import assert_interview_access
 
 router = APIRouter(prefix="/recordings", tags=["recordings"])
 storage = get_storage()
+logger = logging.getLogger(__name__)
+
+
+async def _cleanup_uncommitted_upload(key: str) -> None:
+    """Best-effort compensation when an uploaded object is not committed to the DB."""
+    try:
+        await storage.delete(key)
+    except Exception:
+        # Never hide the original upload/DB exception. Keep the key in structured logs
+        # so an operator can reconcile it against the private bucket if cleanup fails.
+        logger.exception("Could not remove uncommitted recording object", extra={"storage_key": key})
 
 @router.post("/{interview_id}", response_model=RecordingOut, status_code=201)
 async def upload_recording(interview_id: UUID, file: UploadFile = File(...), db: AsyncSession = Depends(get_db), user: User = Depends(require_roles(Role.ADMIN.value, Role.INTERVIEWER.value))):
@@ -28,7 +41,6 @@ async def upload_recording(interview_id: UUID, file: UploadFile = File(...), db:
         raise HTTPException(status_code=400, detail="Confirmed recording consent is required before uploading audio")
     if interview.status not in {InterviewStatus.RECORDING.value, InterviewStatus.DRAFT.value, InterviewStatus.UPLOADED.value, InterviewStatus.FAILED.value}: raise HTTPException(status_code=409, detail=f"Cannot upload in status {interview.status}")
     transition(interview, InterviewStatus.UPLOADING.value) if interview.status != InterviewStatus.UPLOADING.value else None
-    import os
     safe_name = os.path.basename(file.filename or 'recording.bin').replace('\\','_').replace('/','_')[:180] or 'recording.bin'
     key = f"interviews/{interview.id}/{uuid4()}-{safe_name}"
     try:
@@ -42,12 +54,35 @@ async def upload_recording(interview_id: UUID, file: UploadFile = File(...), db:
         interview.status = InterviewStatus.FAILED.value
         await db.commit()
         raise HTTPException(status_code=415, detail="Audio content does not match the declared MIME type")
-    duplicate = await db.scalar(select(Recording).where(Recording.interview_id == interview.id, Recording.sha256 == digest))
-    idempotency_key = f"transcription:{interview.id}:{digest}"
-    if duplicate:
-        await storage.delete(key)
+    try:
+        duplicate = await db.scalar(select(Recording).where(Recording.interview_id == interview.id, Recording.sha256 == digest))
+        idempotency_key = f"transcription:{interview.id}:{digest}"
+        if duplicate:
+            await storage.delete(key)
+            existing_job = await db.scalar(select(ProcessingJob).where(ProcessingJob.idempotency_key == idempotency_key))
+            if existing_job and existing_job.status in {"failed", "cancelled"}:
+                existing_job.status = "queued"
+                existing_job.next_attempt_at = None
+                existing_job.finished_at = None
+                existing_job.locked_at = None
+                existing_job.heartbeat_at = None
+                existing_job.error_code = None
+                existing_job.error_message = None
+                existing_job.attempts = 0
+            if interview.status == InterviewStatus.FAILED.value:
+                transition(interview, InterviewStatus.QUEUED.value)
+            await db.commit()
+            return duplicate
+
+        recording = Recording(interview_id=interview.id, storage_key=key, original_filename=(file.filename or "recording"), mime_type=mime_type, size_bytes=size, sha256=digest, created_by=user.id)
+        db.add(recording)
+        await db.flush()
+        transition(interview, InterviewStatus.UPLOADED.value)
         existing_job = await db.scalar(select(ProcessingJob).where(ProcessingJob.idempotency_key == idempotency_key))
-        if existing_job and existing_job.status in {"failed", "cancelled"}:
+        if existing_job is None:
+            job = ProcessingJob(interview_id=interview.id, job_type="transcription", status="queued", max_attempts=settings.processing_max_attempts, idempotency_key=idempotency_key, next_attempt_at=None)
+            db.add(job)
+        elif existing_job.status in {"failed", "cancelled"}:
             existing_job.status = "queued"
             existing_job.next_attempt_at = None
             existing_job.finished_at = None
@@ -56,28 +91,16 @@ async def upload_recording(interview_id: UUID, file: UploadFile = File(...), db:
             existing_job.error_code = None
             existing_job.error_message = None
             existing_job.attempts = 0
-        if interview.status == InterviewStatus.FAILED.value:
-            transition(interview, InterviewStatus.QUEUED.value)
+        await record_audit(db, actor_user_id=user.id, action="recording.created", resource_type="recording", resource_id=recording.id, metadata={"sha256":digest,"size_bytes":size})
         await db.commit()
-        return duplicate
-    recording = Recording(interview_id=interview.id, storage_key=key, original_filename=(file.filename or "recording"), mime_type=mime_type, size_bytes=size, sha256=digest, created_by=user.id)
-    db.add(recording); await db.flush()
-    transition(interview, InterviewStatus.UPLOADED.value)
-    existing_job = await db.scalar(select(ProcessingJob).where(ProcessingJob.idempotency_key == idempotency_key))
-    if existing_job is None:
-        job = ProcessingJob(interview_id=interview.id, job_type="transcription", status="queued", max_attempts=settings.processing_max_attempts, idempotency_key=idempotency_key, next_attempt_at=None)
-        db.add(job)
-    elif existing_job.status in {"failed", "cancelled"}:
-        existing_job.status = "queued"
-        existing_job.next_attempt_at = None
-        existing_job.finished_at = None
-        existing_job.locked_at = None
-        existing_job.heartbeat_at = None
-        existing_job.error_code = None
-        existing_job.error_message = None
-        existing_job.attempts = 0
-    await record_audit(db, actor_user_id=user.id, action="recording.created", resource_type="recording", resource_id=recording.id, metadata={"sha256":digest,"size_bytes":size}); await db.commit(); await db.refresh(recording)
-    return recording
+        await db.refresh(recording)
+        return recording
+    except Exception:
+        # The object was uploaded before the relational transaction. Roll back any
+        # partial DB writes, then compensate by deleting the now-unreferenced object.
+        await db.rollback()
+        await _cleanup_uncommitted_upload(key)
+        raise
 
 @router.get("/{interview_id}/download")
 async def download_recording(interview_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
