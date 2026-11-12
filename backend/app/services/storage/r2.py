@@ -119,12 +119,20 @@ class R2PrivateStorage:
             ContentType=content_type,
         )
 
-    def open(self, key: str):
-        response = self.client.get_object(
-            Bucket=self.bucket,
-            Key=key,
-        )
+    def _open_body_sync(self, key: str):
+        response = self.client.get_object(Bucket=self.bucket, Key=key)
         return response["Body"]
+
+    async def stream(self, key: str, chunk_size: int = 1024 * 1024):
+        body = await asyncio.to_thread(self._open_body_sync, key)
+        try:
+            while True:
+                chunk = await asyncio.to_thread(body.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            await asyncio.to_thread(body.close)
 
     def presign_get(self, key: str, expires_in: int = 300) -> str:
         return self.client.generate_presigned_url(
