@@ -37,15 +37,15 @@ async def upload_recording(interview_id: UUID, file: UploadFile = File(...), db:
         interview.status = InterviewStatus.FAILED.value
         await db.commit()
         raise HTTPException(status_code=413, detail=str(exc))
-    if not storage.validate_audio_header(key, mime_type):
-        storage.delete(key)
+    if not await storage.validate_audio_header(key, mime_type):
+        await storage.delete(key)
         interview.status = InterviewStatus.FAILED.value
         await db.commit()
         raise HTTPException(status_code=415, detail="Audio content does not match the declared MIME type")
     duplicate = await db.scalar(select(Recording).where(Recording.interview_id == interview.id, Recording.sha256 == digest))
     idempotency_key = f"transcription:{interview.id}:{digest}"
     if duplicate:
-        storage.delete(key)
+        await storage.delete(key)
         existing_job = await db.scalar(select(ProcessingJob).where(ProcessingJob.idempotency_key == idempotency_key))
         if existing_job and existing_job.status in {"failed", "cancelled"}:
             existing_job.status = "queued"
