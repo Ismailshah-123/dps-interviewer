@@ -91,22 +91,23 @@ class R2PrivateStorage:
 
         return total, digest.hexdigest(), key
 
-    def validate_audio_header(self, key: str, mime_type: str) -> bool:
+    async def validate_audio_header(self, key: str, mime_type: str) -> bool:
         validator = AUDIO_SIGNATURES.get(mime_type)
         if not validator:
             return False
 
-        response = self.client.get_object(
-            Bucket=self.bucket,
-            Key=key,
-            Range="bytes=0-63",
-        )
+        def read_header() -> bytes:
+            response = self.client.get_object(
+                Bucket=self.bucket,
+                Key=key,
+                Range="bytes=0-63",
+            )
+            try:
+                return response["Body"].read(64)
+            finally:
+                response["Body"].close()
 
-        try:
-            header = response["Body"].read(64)
-        finally:
-            response["Body"].close()
-
+        header = await asyncio.to_thread(read_header)
         return bool(validator(header))
 
     async def save_bytes(self, key: str, data: bytes, content_type: str) -> None:
@@ -118,12 +119,20 @@ class R2PrivateStorage:
             ContentType=content_type,
         )
 
-    def open(self, key: str):
-        response = self.client.get_object(
-            Bucket=self.bucket,
-            Key=key,
-        )
+    def _open_body_sync(self, key: str):
+        response = self.client.get_object(Bucket=self.bucket, Key=key)
         return response["Body"]
+
+    async def stream(self, key: str, chunk_size: int = 1024 * 1024):
+        body = await asyncio.to_thread(self._open_body_sync, key)
+        try:
+            while True:
+                chunk = await asyncio.to_thread(body.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            await asyncio.to_thread(body.close)
 
     def presign_get(self, key: str, expires_in: int = 300) -> str:
         return self.client.generate_presigned_url(
@@ -145,8 +154,9 @@ class R2PrivateStorage:
         )
         return response["Body"], size, last
 
-    def delete(self, key: str):
-        self.client.delete_object(
+    async def delete(self, key: str):
+        await asyncio.to_thread(
+            self.client.delete_object,
             Bucket=self.bucket,
             Key=key,
         )

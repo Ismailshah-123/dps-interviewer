@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 from pathlib import Path
 from app.core.config import settings
@@ -30,7 +31,10 @@ class LocalPrivateStorage:
             raise ValueError("Invalid storage key")
         return path
 
-    def validate_audio_header(self, key: str, mime_type: str) -> bool:
+    async def validate_audio_header(self, key: str, mime_type: str) -> bool:
+        return await asyncio.to_thread(self._validate_audio_header_sync, key, mime_type)
+
+    def _validate_audio_header_sync(self, key: str, mime_type: str) -> bool:
         path = self.path_for(key)
         with path.open("rb") as f:
             header = f.read(64)
@@ -65,8 +69,16 @@ class LocalPrivateStorage:
         import asyncio
         await asyncio.to_thread(path.write_bytes, data)
 
-    def open(self, key: str):
-        return self.path_for(key).open("rb")
+    async def stream(self, key: str, chunk_size: int = 1024 * 1024):
+        handle = await asyncio.to_thread(self.path_for(key).open, "rb")
+        try:
+            while True:
+                chunk = await asyncio.to_thread(handle.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            await asyncio.to_thread(handle.close)
 
     def open_range(self, key: str, start: int, end: int | None = None):
         path = self.path_for(key)
@@ -78,8 +90,9 @@ class LocalPrivateStorage:
         handle.seek(start)
         return _LimitedReader(handle, last - start + 1), size, last
 
-    def delete(self, key: str):
-        self.path_for(key).unlink(missing_ok=True)
+    async def delete(self, key: str):
+        path = self.path_for(key)
+        await asyncio.to_thread(path.unlink, missing_ok=True)
 
 
 class _LimitedReader:
