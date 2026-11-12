@@ -56,6 +56,8 @@ async def review(
     interview = await db.get(Interview, interview_id)
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
+    # Apply the same queue visibility rules to mutations as to review-history reads.
+    assert_interview_access(interview, user)
     if interview.status not in REVIEWABLE:
         raise HTTPException(status_code=409, detail=f"Interview is not reviewable in status {interview.status}")
 
