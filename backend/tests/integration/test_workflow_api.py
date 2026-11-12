@@ -82,6 +82,8 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     assert (await client.post(f"/api/v1/recordings/{iid}", headers=other, files=files)).status_code == 404
     # Reviewer cannot see an interview that has not been submitted.
     assert (await client.get(f"/api/v1/interviews/{iid}", headers=principal)).status_code == 404
+    # Reviewer mutations must enforce the same queue visibility as reads.
+    assert (await client.post(f"/api/v1/reviews/{iid}", headers=principal, json={"action": "review"})).status_code == 404
 
     r = await client.post(f"/api/v1/recordings/{iid}", headers=interviewer, files=files)
     assert r.status_code == 201, r.text
