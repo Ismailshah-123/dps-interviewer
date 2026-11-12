@@ -46,11 +46,22 @@ async def upload_recording(interview_id: UUID, file: UploadFile = File(...), db:
     try:
         size, digest, _ = await storage.save_upload(file, key, settings.max_upload_bytes)
     except ValueError as exc:
+        await _cleanup_uncommitted_upload(key)
         interview.status = InterviewStatus.FAILED.value
         await db.commit()
         raise HTTPException(status_code=413, detail=str(exc))
-    if not await storage.validate_audio_header(key, mime_type):
-        await storage.delete(key)
+    except Exception:
+        await db.rollback()
+        await _cleanup_uncommitted_upload(key)
+        raise
+
+    try:
+        valid_audio = await storage.validate_audio_header(key, mime_type)
+    except Exception:
+        await _cleanup_uncommitted_upload(key)
+        raise
+    if not valid_audio:
+        await _cleanup_uncommitted_upload(key)
         interview.status = InterviewStatus.FAILED.value
         await db.commit()
         raise HTTPException(status_code=415, detail="Audio content does not match the declared MIME type")
