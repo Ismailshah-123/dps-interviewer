@@ -91,22 +91,23 @@ class R2PrivateStorage:
 
         return total, digest.hexdigest(), key
 
-    def validate_audio_header(self, key: str, mime_type: str) -> bool:
+    async def validate_audio_header(self, key: str, mime_type: str) -> bool:
         validator = AUDIO_SIGNATURES.get(mime_type)
         if not validator:
             return False
 
-        response = self.client.get_object(
-            Bucket=self.bucket,
-            Key=key,
-            Range="bytes=0-63",
-        )
+        def read_header() -> bytes:
+            response = self.client.get_object(
+                Bucket=self.bucket,
+                Key=key,
+                Range="bytes=0-63",
+            )
+            try:
+                return response["Body"].read(64)
+            finally:
+                response["Body"].close()
 
-        try:
-            header = response["Body"].read(64)
-        finally:
-            response["Body"].close()
-
+        header = await asyncio.to_thread(read_header)
         return bool(validator(header))
 
     async def save_bytes(self, key: str, data: bytes, content_type: str) -> None:
@@ -145,8 +146,9 @@ class R2PrivateStorage:
         )
         return response["Body"], size, last
 
-    def delete(self, key: str):
-        self.client.delete_object(
+    async def delete(self, key: str):
+        await asyncio.to_thread(
+            self.client.delete_object,
             Bucket=self.bucket,
             Key=key,
         )
