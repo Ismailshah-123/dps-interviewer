@@ -121,7 +121,7 @@ async def download_recording(interview_id: UUID, db: AsyncSession = Depends(get_
     assert_interview_access(interview, user)
     recording = await db.scalar(select(Recording).where(Recording.interview_id == interview_id).order_by(Recording.created_at.desc()))
     if not recording: raise HTTPException(status_code=404, detail="Recording not found")
-    safe_filename = (recording.original_filename or "recording").replace("\\r", "").replace("\\n", "").replace('"', "")
+    safe_filename = (recording.original_filename or "recording").replace("\r", "").replace("\n", "").replace('"', "")
     disposition = f"attachment; filename*=UTF-8''{quote(safe_filename, safe='')}"
     return StreamingResponse(
         storage.stream(recording.storage_key),
