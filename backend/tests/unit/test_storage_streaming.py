@@ -1,9 +1,8 @@
 from pathlib import Path
 
-import pytest
-
 from app.services.storage.local import LocalPrivateStorage
 from app.services.storage.r2 import R2PrivateStorage
+from app.api.recordings import _recording_content_disposition
 
 
 async def test_local_storage_streams_file_in_chunks(tmp_path):
@@ -64,3 +63,12 @@ async def test_r2_storage_closes_body_when_consumer_stops_early():
 
     assert first_chunk == b"large"
     assert body.closed is True
+
+def test_download_content_disposition_removes_header_injection_and_encodes_unicode():
+    header = _recording_content_disposition('interview\r\nInjected: yes "کراچی".webm')
+
+    assert "\r" not in header
+    assert "\n" not in header
+    assert "Injected:" not in header
+    assert "%DA" in header
+    assert header.startswith("attachment; filename*=UTF-8''")
