@@ -20,6 +20,11 @@ storage = get_storage()
 logger = logging.getLogger(__name__)
 
 
+def _recording_content_disposition(filename: str | None) -> str:
+    safe_filename = (filename or "recording").replace("\\r", "").replace("\\n", "").replace('"', "")
+    return f"attachment; filename*=UTF-8''{quote(safe_filename, safe='')}"
+
+
 async def _cleanup_uncommitted_upload(key: str) -> None:
     """Best-effort compensation when an uploaded object is not committed to the DB."""
     try:
