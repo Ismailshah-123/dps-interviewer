@@ -142,6 +142,77 @@ async def archive_existing_finalized_interview(
     }
 
 
+@router.get("/storage/health")
+async def storage_health(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_roles(Role.ADMIN.value)),
+):
+    """Admin-only storage diagnostics; never returns credentials or object keys."""
+    provider = "unknown"
+    try:
+        from app.core.config import settings
+        provider = settings.storage_provider.strip().lower()
+        storage = get_storage()
+        await asyncio.to_thread(storage.check_connection)
+        connection = "connected"
+        connection_error = None
+    except Exception:
+        storage = None
+        connection = "error"
+        connection_error = "Storage provider could not be reached. Check server configuration and provider permissions."
+
+    recording_count = int(await db.scalar(select(func.count(Recording.id))) or 0)
+    pdf_count = int(await db.scalar(select(func.count(StoredDocument.id))) or 0)
+    pending_archive_count = int(await db.scalar(
+        select(func.count(Interview.id))
+        .where(
+            Interview.status == "finalized",
+            ~select(StoredDocument.id).where(
+                StoredDocument.interview_id == Interview.id,
+                StoredDocument.document_type == "final_interview_pdf",
+            ).exists(),
+        )
+    ) or 0)
+
+    missing = []
+    checked = 0
+    if storage is not None:
+        rows = (await db.execute(
+            select(Recording.id, Recording.storage_key, Recording.original_filename)
+            .order_by(Recording.created_at.desc()).limit(200)
+        )).all()
+        docs = (await db.execute(
+            select(StoredDocument.id, StoredDocument.storage_key, StoredDocument.original_filename)
+            .order_by(StoredDocument.created_at.desc()).limit(200)
+        )).all()
+        for kind, items in (("recording", rows), ("pdf", docs)):
+            for asset_id, key, filename in items:
+                try:
+                    exists = await asyncio.to_thread(storage.exists, key)
+                    checked += 1
+                    if not exists:
+                        missing.append({"id": str(asset_id), "kind": kind, "filename": filename})
+                except Exception:
+                    # An indeterminate HEAD/read error is not labelled as a missing object.
+                    connection = "degraded"
+    failed_archives = int(await db.scalar(
+        select(func.count(AuditEvent.id)).where(AuditEvent.action == "document.archive_failed")
+    ) or 0)
+    return {
+        "provider": provider,
+        "connection": connection,
+        "connection_error": connection_error,
+        "recordings": recording_count,
+        "pdfs": pdf_count,
+        "pending_archives": pending_archive_count,
+        "checked_objects": checked,
+        "missing_count": len(missing),
+        "missing_assets": missing[:50],
+        "failed_archivals": failed_archives,
+        "checked_limit": 400,
+    }
+
+
 @router.get("/storage")
 async def storage_library(
     kind: str = Query(default="all", pattern="^(all|recording|pdf)$"),
