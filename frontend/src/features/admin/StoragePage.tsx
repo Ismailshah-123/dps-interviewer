@@ -75,7 +75,8 @@ export function StoragePage() {
       document.body.appendChild(anchor)
       anchor.click()
       anchor.remove()
-      URL.revokeObjectURL(url)
+      // Keep the object URL alive long enough for the browser to start the download.
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
     } catch (error) {
       toast.error(errorMessage(error))
     }
