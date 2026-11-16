@@ -101,11 +101,10 @@ cd backend && DPS_REAL_AUDIO=1 .venv/Scripts/python -m pytest tests/real_audio -
 - Authorization is checked by the backend on every endpoint, download and export; other users' records return 404.
 - Recording and upload are refused until consent is recorded (notice version, staff account, time).
 - Evidence (transcript and form) can only be edited before submission or during a requested correction.
-- Submission requires the interviewer to confirm or edit every field; "Interviewer Observations" is never AI-filled.
+- Submission is an interview-level acknowledgement after staff review the complete interview; individual AI draft fields do not require separate confirmation.
 - Deterministic test providers are refused unless `ENVIRONMENT=test`, so a demo cannot show canned AI output.
 - Refresh tokens live in an HttpOnly, SameSite=Strict cookie; access tokens are kept only in memory.
 - Audio is stored privately with a SHA-256 checksum and served only through authorized requests.
+- Admin storage tools provide controlled access to private recordings and archived, versioned interview PDFs; access is role-checked and audited.
+- Additional questions and answers are stored separately from the official form fields and included in the form view and generated PDF. They must be treated as transcript-derived drafts and reviewed by authorized staff.
 
-## Documentation
-
-`docs/PROJECT_LOG.md` (status and verified results), `docs/decisions.md`, `docs/architecture.md`, `docs/threat-model.md`, `docs/privacy-and-retention.md`, `docs/deployment.md`, `docs/production-readiness.md`.
