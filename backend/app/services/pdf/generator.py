@@ -43,7 +43,7 @@ BOLD_CANDIDATES = [
 
 SOURCE_LABEL = {
     "human": "Entered or edited by staff",
-    "ai_summary": "AI draft from transcript, confirmed by interviewer",
+    "ai_summary": "AI draft from transcript; included in staff interview review",
     "not_mentioned": "Not mentioned in transcript",
     "manual_required": "Interviewer entry",
 }
