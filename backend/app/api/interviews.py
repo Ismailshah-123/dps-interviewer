@@ -1,11 +1,11 @@
 from uuid import UUID
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_roles
 from app.db.session import get_db
-from app.models.models import Candidate, ConsentRecord, Interview, InterviewForm, InterviewFormFieldValue, InterviewStatus, Role, User, InterviewTemplateVersion
+from app.models.models import Candidate, ConsentRecord, Interview, InterviewForm, InterviewFormFieldValue, InterviewStatus, Role, User, InterviewTemplateVersion, InterviewReview
 from app.schemas.common import InterviewCreate, InterviewOut, ConsentCreate, InterviewPage, InterviewStats
 from app.services.workflow import transition
 from app.services.audit import record_audit
@@ -89,6 +89,90 @@ async def interview_stats(db: AsyncSession = Depends(get_db), user: User = Depen
     by_status = {status: int(count) for status, count in rows}
     return {"total": sum(by_status.values()), "by_status": by_status}
 
+@router.get("/analytics")
+async def interview_analytics(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Role-scoped dashboard analytics. Staff comparisons are administrator-only."""
+    scoped_ids = _scoped(select(Interview.id), user).subquery()
+    status_rows = (await db.execute(
+        _scoped(select(Interview.status, func.count(Interview.id)), user)
+        .group_by(Interview.status)
+    )).all()
+    by_status = {status: int(count) for status, count in status_rows}
+
+    candidate_query = _scoped(
+        select(func.count(func.distinct(Candidate.id)))
+        .join(Interview, Interview.candidate_id == Candidate.id),
+        user,
+    )
+    total_candidates = int(await db.scalar(candidate_query) or 0)
+
+    grade_rows = (await db.execute(
+        _scoped(
+            select(Candidate.grade, func.count(func.distinct(Candidate.id)))
+            .join(Interview, Interview.candidate_id == Candidate.id),
+            user,
+        ).group_by(Candidate.grade)
+    )).all()
+    by_grade = [{"grade": grade or "Unspecified", "count": int(count)} for grade, count in grade_rows]
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=29)
+    daily_rows = (await db.execute(
+        _scoped(
+            select(func.date(Interview.created_at), func.count(Interview.id))
+            .where(Interview.created_at >= cutoff),
+            user,
+        ).group_by(func.date(Interview.created_at)).order_by(func.date(Interview.created_at))
+    )).all()
+    daily_activity = [{"date": day.isoformat() if hasattr(day, "isoformat") else str(day), "interviews": int(count)} for day, count in daily_rows]
+
+    review_rows = (await db.execute(
+        select(InterviewReview.action, func.count(InterviewReview.id))
+        .join(Interview, Interview.id == InterviewReview.interview_id)
+        .where(Interview.id.in_(select(scoped_ids.c.id)))
+        .group_by(InterviewReview.action)
+    )).all()
+    review_actions = {action: int(count) for action, count in review_rows}
+
+    interviewer_performance = []
+    if user.role == Role.ADMIN.value:
+        staff_rows = (await db.execute(
+            select(
+                User.id,
+                User.full_name,
+                func.count(Interview.id),
+                func.sum(case((Interview.status == InterviewStatus.SUBMITTED.value, 1), else_=0)),
+                func.sum(case((Interview.status == InterviewStatus.CORRECTION_REQUESTED.value, 1), else_=0)),
+                func.sum(case((Interview.status == InterviewStatus.FINALIZED.value, 1), else_=0)),
+            )
+            .join(Interview, Interview.interviewer_id == User.id)
+            .where(User.role == Role.INTERVIEWER.value)
+            .group_by(User.id, User.full_name)
+            .order_by(func.count(Interview.id).desc())
+        )).all()
+        interviewer_performance = [
+            {
+                "interviewer_id": str(staff_id),
+                "name": name,
+                "total_interviews": int(total or 0),
+                "submitted": int(submitted or 0),
+                "corrections_requested": int(corrections or 0),
+                "finalized": int(finalized or 0),
+            }
+            for staff_id, name, total, submitted, corrections, finalized in staff_rows
+        ]
+
+    return {
+        "total_interviews": sum(by_status.values()),
+        "total_candidates": total_candidates,
+        "by_status": by_status,
+        "by_grade": by_grade,
+        "daily_activity": daily_activity,
+        "review_actions": review_actions,
+        "interviewer_performance": interviewer_performance,
+        "scope": "system" if user.role == Role.ADMIN.value else "review_queue" if user.role in REVIEW_ROLES else "assigned",
+    }
+
+
 @router.get("/{interview_id}", response_model=InterviewOut)
 async def get_interview(interview_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     return (await _decorate(db, [await get_owned_interview(interview_id, db, user)]))[0]
@@ -138,7 +222,7 @@ async def recording_start(interview_id: UUID, db: AsyncSession = Depends(get_db)
 
 
 @router.post("/{interview_id}/submit", response_model=InterviewOut)
-async def submit(interview_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(require_roles(Role.ADMIN.value, Role.INTERVIEWER.value))):
+async def submit(interview_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(require_roles(Role.INTERVIEWER.value))):
     interview = await get_owned_interview(interview_id, db, user)
     if interview.status not in {InterviewStatus.NEEDS_REVIEW.value, InterviewStatus.CORRECTION_REQUESTED.value}:
         raise HTTPException(status_code=409, detail="Interview must be awaiting interviewer review or correction before submission")

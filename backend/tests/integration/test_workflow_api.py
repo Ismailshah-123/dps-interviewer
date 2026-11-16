@@ -136,13 +136,20 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=other, json={"value": {"text": "tampered"}})
     assert r.status_code == 404
 
+    # Only the assigned interviewer may submit; administrators and principals cannot submit.
+    assert (await client.post(f"/api/v1/interviews/{iid}/submit", headers=admin)).status_code == 403
+    assert (await client.post(f"/api/v1/interviews/{iid}/submit", headers=principal)).status_code == 403
     r = await client.post(f"/api/v1/interviews/{iid}/submit", headers=interviewer)
     assert r.status_code == 200, r.text
-    assert r.json()["status"] == "submitted"
+    submitted = (await client.get(f"/api/v1/processing/{iid}", headers=interviewer)).json()
+    assert submitted["interview_status"] == "submitted", submitted
 
     # After submission evidence is frozen for the interviewer.
     r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=interviewer, json={"value": {"text": "late edit"}})
     assert r.status_code == 409
+
+    # Review actions belong to principal/reviewer roles; administrators cannot approve on their behalf.
+    assert (await client.post(f"/api/v1/reviews/{iid}", headers=admin, json={"action": "review"})).status_code == 403
 
     # Reviewer: cannot edit, can review; correction requires remarks.
     r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=principal, json={"value": {"text": "x"}})
@@ -226,6 +233,23 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     stats = (await client.get("/api/v1/interviews/stats", headers=interviewer)).json()
     assert stats["by_status"].get("finalized", 0) >= 1
     assert (await client.get("/api/v1/interviews/stats", headers=other)).json()["total"] == 0
+
+    # Analytics must respect each role's visibility scope and expose staff comparisons only to admins.
+    interviewer_analytics = (await client.get("/api/v1/interviews/analytics", headers=interviewer)).json()
+    assert interviewer_analytics["scope"] == "assigned"
+    assert interviewer_analytics["total_interviews"] >= 1
+    assert interviewer_analytics["by_grade"][0]["grade"] == "Grade 3"
+    assert (await client.get("/api/v1/interviews/analytics", headers=other)).json()["total_interviews"] == 0
+
+    principal_analytics = (await client.get("/api/v1/interviews/analytics", headers=principal)).json()
+    assert principal_analytics["scope"] == "review_queue"
+    assert principal_analytics["total_interviews"] >= 1
+    assert principal_analytics["interviewer_performance"] == []
+
+    admin_analytics = (await client.get("/api/v1/interviews/analytics", headers=admin)).json()
+    assert admin_analytics["scope"] == "system"
+    assert admin_analytics["total_interviews"] >= 1
+    assert any(row["name"] == "Synthetic interviewer" for row in admin_analytics["interviewer_performance"])
 
 
 async def test_upload_rejects_wrong_signature_and_type(client):

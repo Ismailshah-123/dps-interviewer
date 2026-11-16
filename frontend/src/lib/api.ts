@@ -9,6 +9,7 @@ import type {
   Interview,
   InterviewForm,
   InterviewStats,
+  InterviewAnalytics,
   Page,
   ProcessingStatus,
   Recording,
@@ -241,6 +242,7 @@ export const api = {
 
   interviews: (params: ListParams & { status?: string[]; candidate_id?: string } = {}) => request<Page<Interview>>('/interviews', { query: { ...params } }),
   interviewStats: () => request<InterviewStats>('/interviews/stats'),
+  interviewAnalytics: () => request<InterviewAnalytics>('/interviews/analytics'),
   interview: (id: string) => request<Interview>(`/interviews/${id}`),
   createInterview: (candidate_id: string) => request<Interview>('/interviews', { method: 'POST', body: { candidate_id } }),
   confirmConsent: (id: string, notice_version: string) => request<{ status: string }>(`/interviews/${id}/consent`, { method: 'POST', body: { notice_version, confirmed: true } }),
