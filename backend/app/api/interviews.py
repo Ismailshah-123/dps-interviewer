@@ -99,9 +99,11 @@ async def interview_analytics(db: AsyncSession = Depends(get_db), user: User = D
     )).all()
     by_status = {status: int(count) for status, count in status_rows}
 
-    candidate_query = select(func.count(Candidate.id))
-    if user.role == Role.INTERVIEWER.value:
-        candidate_query = candidate_query.where(Candidate.assigned_interviewer_id == user.id)
+    candidate_query = _scoped(
+        select(func.count(func.distinct(Candidate.id)))
+        .join(Interview, Interview.candidate_id == Candidate.id),
+        user,
+    )
     total_candidates = int(await db.scalar(candidate_query) or 0)
 
     grade_rows = (await db.execute(
