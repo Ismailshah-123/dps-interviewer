@@ -81,19 +81,63 @@ function AnalyticsBars({ byStatus }: { byStatus: Partial<Record<InterviewStatus,
   )
 }
 
+
+function DailyActivityChart({ items }: { items: Array<{ date: string; interviews: number }> }) {
+  const visible = items.slice(-14)
+  const max = Math.max(1, ...visible.map((item) => item.interviews))
+  if (visible.length === 0) {
+    return <EmptyState title="No recent activity" description="Daily interview activity will appear here as new interviews are created." />
+  }
+  return (
+    <div className="flex h-44 items-end gap-2 border-b px-1" aria-label="Daily interview creation over the last 14 active days">
+      {visible.map((item) => (
+        <div key={item.date} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-2">
+          <span className="text-[11px] font-medium tabular-nums text-muted-foreground">{item.interviews}</span>
+          <div className="flex h-28 w-full items-end rounded-t bg-muted">
+            <div
+              className="w-full rounded-t bg-primary/80 transition-[height]"
+              style={{ height: `${Math.max(5, (item.interviews / max) * 100)}%` }}
+              role="img"
+              aria-label={`${item.date}: ${item.interviews} interviews`}
+            />
+          </div>
+          <span className="text-[10px] text-muted-foreground">{new Date(`${item.date}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function GradeBars({ items }: { items: Array<{ grade: string; count: number }> }) {
+  const max = Math.max(1, ...items.map((item) => item.count))
+  if (items.length === 0) return <p className="text-sm text-muted-foreground">No grade data available yet.</p>
+  return (
+    <div className="space-y-3">
+      {items.map((item) => (
+        <div key={item.grade} className="grid grid-cols-[minmax(80px,1fr)_minmax(0,3fr)_32px] items-center gap-3">
+          <span className="truncate text-sm text-muted-foreground">{item.grade}</span>
+          <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary/70" style={{ width: `${Math.max(3, (item.count / max) * 100)}%` }} />
+          </div>
+          <span className="text-right text-sm font-semibold tabular-nums">{item.count}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function DashboardPage() {
   const { user } = useAuth()
-  const stats = useQuery({ queryKey: ['interview-stats', user?.role], queryFn: api.interviewStats, refetchInterval: 15000 })
+  const analytics = useQuery({ queryKey: ['interview-analytics', user?.role], queryFn: api.interviewAnalytics, refetchInterval: 30000 })
   const candidates = useQuery({ queryKey: ['candidates', { limit: 1 }], queryFn: () => api.candidates({ limit: 1 }) })
   const isPrincipal = user?.role === 'principal' || user?.role === 'reviewer'
   const isAdmin = user?.role === 'administrator'
-  const isInterviewer = user?.role === 'interviewer'
   const canStartInterview = isAdmin || isInterviewer
   const recent = useQuery({
     queryKey: ['interviews', 'recent', user?.role],
     queryFn: () => api.interviews({ limit: 8, status: isPrincipal ? REVIEW_QUEUE_STATUSES : undefined }),
   })
-  const by = stats.data?.by_status ?? {}
+  const by = analytics.data?.by_status ?? {}
   const processingCount = sum(by, PROCESSING_STATUSES)
   const reviewCount = isPrincipal
     ? sum(by, ['submitted', 'principal_review', 'reviewed'])
@@ -122,9 +166,9 @@ export function DashboardPage() {
           )
         }
       />
-      {stats.isError && <ErrorState error={stats.error} onRetry={() => stats.refetch()} />}
+      {analytics.isError && <ErrorState error={analytics.error} onRetry={() => analytics.refetch()} />}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Interviews in view" value={stats.data?.total} hint={isAdmin ? 'Across the school system' : isPrincipal ? 'Visible in the review workflow' : 'Assigned to your account'} icon={FileAudio} />
+        <StatCard label="Interviews in view" value={analytics.data?.total_interviews} hint={isAdmin ? 'Across the school system' : isPrincipal ? 'Visible in the review workflow' : 'Assigned to your account'} icon={FileAudio} />
         <StatCard label={isPrincipal ? 'Awaiting your review' : 'In processing'} value={isPrincipal ? sum(by, ['submitted', 'principal_review']) : processingCount} hint={isPrincipal ? 'Submitted and under principal review' : 'Uploaded, transcribing or summarizing'} icon={Hourglass} />
         <StatCard label={isPrincipal ? 'Corrections requested' : 'Needs attention'} value={isPrincipal ? by.correction_requested ?? 0 : attentionCount} hint={isPrincipal ? 'Returned to interviewers' : 'Failed processing or returned records'} icon={PenLine} />
         <StatCard label="Finalized records" value={completedCount} hint="Completed and finalized interview records" icon={ClipboardCheck} to={isPrincipal ? '/reviews' : undefined} />
@@ -154,7 +198,7 @@ export function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {stats.isPending ? <LoadingRows rows={5} /> : stats.isError ? <ErrorState error={stats.error} onRetry={() => stats.refetch()} /> : <AnalyticsBars byStatus={by} />}
+            {analytics.isPending ? <LoadingRows rows={5} /> : stats.isError ? <ErrorState error={stats.error} onRetry={() => stats.refetch()} /> : <AnalyticsBars byStatus={by} />}
           </CardContent>
         </Card>
         <Card>
@@ -180,6 +224,56 @@ export function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <div className="mt-6 grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Daily interview activity</CardTitle>
+            <CardDescription>New interviews created by day, over the last 14 active dates in the 30-day window.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {analytics.isPending ? <LoadingRows rows={3} /> : analytics.isError ? <ErrorState error={analytics.error} onRetry={() => analytics.refetch()} /> : <DailyActivityChart items={analytics.data.daily_activity} />}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Candidates by grade</CardTitle>
+            <CardDescription>Interview records grouped by the candidate's grade.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {analytics.isPending ? <LoadingRows rows={3} /> : analytics.isError ? <ErrorState error={analytics.error} onRetry={() => analytics.refetch()} /> : <GradeBars items={analytics.data.by_grade} />}
+          </CardContent>
+        </Card>
+      </div>
+
+      {isAdmin && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Interviewer performance</CardTitle>
+            <CardDescription>Operational workload by assigned interviewer. Counts reflect current interview status, not a quality score.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {analytics.isPending ? <LoadingRows rows={4} /> : analytics.isError ? <ErrorState error={analytics.error} onRetry={() => analytics.refetch()} /> : analytics.data.interviewer_performance.length === 0 ? (
+              <EmptyState title="No interviewer activity yet" description="Interviewer workload will appear when interviews are assigned." />
+            ) : (
+              <Table>
+                <TableHeader><TableRow><TableHead>Interviewer</TableHead><TableHead className="text-right">Total</TableHead><TableHead className="text-right">Submitted</TableHead><TableHead className="text-right">Corrections</TableHead><TableHead className="text-right">Finalized</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {analytics.data.interviewer_performance.map((staff) => (
+                    <TableRow key={staff.interviewer_id}>
+                      <TableCell className="font-medium">{staff.name}</TableCell>
+                      <TableCell className="text-right tabular-nums">{staff.total_interviews}</TableCell>
+                      <TableCell className="text-right tabular-nums">{staff.submitted}</TableCell>
+                      <TableCell className="text-right tabular-nums">{staff.corrections_requested}</TableCell>
+                      <TableCell className="text-right tabular-nums">{staff.finalized}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="mt-6">
         <CardHeader>
