@@ -227,6 +227,23 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     assert stats["by_status"].get("finalized", 0) >= 1
     assert (await client.get("/api/v1/interviews/stats", headers=other)).json()["total"] == 0
 
+    # Analytics must respect each role's visibility scope and expose staff comparisons only to admins.
+    interviewer_analytics = (await client.get("/api/v1/interviews/analytics", headers=interviewer)).json()
+    assert interviewer_analytics["scope"] == "assigned"
+    assert interviewer_analytics["total_interviews"] >= 1
+    assert interviewer_analytics["by_grade"][0]["grade"] == "Grade 3"
+    assert (await client.get("/api/v1/interviews/analytics", headers=other)).json()["total_interviews"] == 0
+
+    principal_analytics = (await client.get("/api/v1/interviews/analytics", headers=principal)).json()
+    assert principal_analytics["scope"] == "review_queue"
+    assert principal_analytics["total_interviews"] >= 1
+    assert principal_analytics["interviewer_performance"] == []
+
+    admin_analytics = (await client.get("/api/v1/interviews/analytics", headers=admin)).json()
+    assert admin_analytics["scope"] == "system"
+    assert admin_analytics["total_interviews"] >= 1
+    assert any(row["name"] == "Synthetic interviewer" for row in admin_analytics["interviewer_performance"])
+
 
 async def test_upload_rejects_wrong_signature_and_type(client):
     admin = await login(client, ADMIN["email"], ADMIN["password"])
