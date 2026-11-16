@@ -130,6 +130,18 @@ async def archive_existing_finalized_interview(
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        await db.rollback()
+        await record_audit(
+            db,
+            actor_user_id=admin.id,
+            action="document.archive_failed",
+            resource_type="interview",
+            resource_id=interview.id,
+            metadata={"reason": type(exc).__name__},
+        )
+        await db.commit()
+        raise HTTPException(status_code=502, detail="PDF archival failed. The finalized interview is unchanged; an administrator can safely retry archival.") from exc
     await db.commit()
     await db.refresh(document)
     return {
