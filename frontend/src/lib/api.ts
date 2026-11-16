@@ -17,6 +17,7 @@ import type {
   Role,
   Summary,
   StorageAsset,
+  StorageHealth,
   UnarchivedInterview,
   TemplateSummary,
   TemplateVersion,
@@ -276,6 +277,7 @@ export const api = {
   users: (params: ListParams & { role?: Role } = {}) => request<Page<User>>('/users', { query: { ...params } }),
   createUser: (body: { email: string; full_name: string; password: string; role: Role }) => request<User>('/auth/users', { method: 'POST', body }),
   updateUser: (id: string, body: Partial<Pick<User, 'full_name' | 'role' | 'is_active'>>) => request<User>(`/users/${id}`, { method: 'PATCH', body }),
+  storageHealth: () => request<StorageHealth>('/admin/storage/health'),
   storageAssets: (params: ListParams & { kind?: 'all' | 'recording' | 'pdf'; q?: string } = {}) =>
     request<Page<StorageAsset>>('/admin/storage', { query: { ...params } }),
   unarchivedInterviews: (q?: string) =>

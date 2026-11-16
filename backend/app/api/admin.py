@@ -4,7 +4,7 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import require_roles
 from app.db.session import get_db
@@ -86,11 +86,29 @@ async def unarchived_finalized_interviews(
         )
         .exists()
     )
+    from uuid import UUID
+    failed_archive_rows = (await db.scalars(
+        select(AuditEvent.resource_id).where(
+            AuditEvent.action == "document.archive_failed",
+            AuditEvent.resource_type == "interview",
+            AuditEvent.resource_id.is_not(None),
+        )
+    )).all()
+    failed_interview_ids = []
+    for value in failed_archive_rows:
+        try:
+            failed_interview_ids.append(UUID(value))
+        except (TypeError, ValueError):
+            continue
+
     stmt = (
         select(Interview, Candidate)
         .join(Candidate, Candidate.id == Interview.candidate_id)
-        .where(Interview.status == "finalized", ~archived_document)
-        .order_by(Interview.finalized_at.desc())
+        .where(or_(
+            and_(Interview.status == "finalized", ~archived_document),
+            and_(Interview.status == "reviewed", Interview.id.in_(failed_interview_ids)) if failed_interview_ids else False,
+        ))
+        .order_by(Interview.finalized_at.desc(), Interview.updated_at.desc())
         .limit(limit)
     )
     if q:
@@ -123,13 +141,37 @@ async def archive_existing_finalized_interview(
     interview = await db.get(Interview, uid)
     if interview is None:
         raise HTTPException(status_code=404, detail="Interview not found")
-    if interview.status != "finalized":
-        raise HTTPException(status_code=409, detail="Only finalized interviews can be archived")
+    if interview.status == "reviewed":
+        failed_attempt = await db.scalar(
+            select(AuditEvent.id).where(
+                AuditEvent.action == "document.archive_failed",
+                AuditEvent.resource_type == "interview",
+                AuditEvent.resource_id == str(interview.id),
+            ).limit(1)
+        )
+        if failed_attempt is None:
+            raise HTTPException(status_code=409, detail="Only finalized interviews or records with a previous failed finalization can be archived")
+        from app.services.workflow import transition
+        transition(interview, "finalized")
+    elif interview.status != "finalized":
+        raise HTTPException(status_code=409, detail="Only finalized interviews or records with a previous failed finalization can be archived")
     try:
         document = await create_final_interview_pdf(db, interview, admin)
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        await db.rollback()
+        await record_audit(
+            db,
+            actor_user_id=admin.id,
+            action="document.archive_failed",
+            resource_type="interview",
+            resource_id=interview.id,
+            metadata={"reason": type(exc).__name__},
+        )
+        await db.commit()
+        raise HTTPException(status_code=502, detail="PDF archival failed. The finalized interview is unchanged; an administrator can safely retry archival.") from exc
     await db.commit()
     await db.refresh(document)
     return {
@@ -139,6 +181,98 @@ async def archive_existing_finalized_interview(
         "size_bytes": document.size_bytes,
         "version_number": document.version_number,
         "created_at": document.created_at,
+    }
+
+
+@router.get("/storage/health")
+async def storage_health(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_roles(Role.ADMIN.value)),
+):
+    """Admin-only storage diagnostics; never returns credentials or object keys."""
+    provider = "unknown"
+    try:
+        from app.core.config import settings
+        provider = settings.storage_provider.strip().lower()
+        storage = get_storage()
+        await asyncio.to_thread(storage.check_connection)
+        connection = "connected"
+        connection_error = None
+    except Exception:
+        storage = None
+        connection = "error"
+        connection_error = "Storage provider could not be reached. Check server configuration and provider permissions."
+
+    recording_count = int(await db.scalar(select(func.count(Recording.id))) or 0)
+    pdf_count = int(await db.scalar(select(func.count(StoredDocument.id))) or 0)
+    pending_archive_count = int(await db.scalar(
+        select(func.count(Interview.id))
+        .where(
+            Interview.status == "finalized",
+            ~select(StoredDocument.id).where(
+                StoredDocument.interview_id == Interview.id,
+                StoredDocument.document_type == "final_interview_pdf",
+            ).exists(),
+        )
+    ) or 0)
+
+    missing = []
+    checked = 0
+    if storage is not None:
+        rows = (await db.execute(
+            select(Recording.id, Recording.storage_key, Recording.original_filename)
+            .order_by(Recording.created_at.desc()).limit(200)
+        )).all()
+        docs = (await db.execute(
+            select(StoredDocument.id, StoredDocument.storage_key, StoredDocument.original_filename)
+            .order_by(StoredDocument.created_at.desc()).limit(200)
+        )).all()
+        for kind, items in (("recording", rows), ("pdf", docs)):
+            for asset_id, key, filename in items:
+                try:
+                    exists = await asyncio.to_thread(storage.exists, key)
+                    checked += 1
+                    if not exists:
+                        missing.append({"id": str(asset_id), "kind": kind, "filename": filename})
+                except Exception:
+                    # An indeterminate HEAD/read error is not labelled as a missing object.
+                    connection = "degraded"
+    failed_archives = int(await db.scalar(
+        select(func.count(AuditEvent.id)).where(AuditEvent.action == "document.archive_failed")
+    ) or 0)
+    failed_review_ids = []
+    failed_review_rows = (await db.scalars(
+        select(AuditEvent.resource_id).where(
+            AuditEvent.action == "document.archive_failed",
+            AuditEvent.resource_type == "interview",
+            AuditEvent.resource_id.is_not(None),
+        )
+    )).all()
+    from uuid import UUID
+    for value in failed_review_rows:
+        try:
+            failed_review_ids.append(UUID(value))
+        except (TypeError, ValueError):
+            continue
+    if failed_review_ids:
+        pending_archive_count += int(await db.scalar(
+            select(func.count(Interview.id)).where(
+                Interview.status == "reviewed",
+                Interview.id.in_(set(failed_review_ids)),
+            )
+        ) or 0)
+    return {
+        "provider": provider,
+        "connection": connection,
+        "connection_error": connection_error,
+        "recordings": recording_count,
+        "pdfs": pdf_count,
+        "pending_archives": pending_archive_count,
+        "checked_objects": checked,
+        "missing_count": len(missing),
+        "missing_assets": missing[:50],
+        "failed_archivals": failed_archives,
+        "checked_limit": 400,
     }
 
 

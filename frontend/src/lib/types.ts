@@ -100,6 +100,20 @@ export interface UnarchivedInterview {
   finalized_at: string | null
 }
 
+export interface StorageHealth {
+  provider: string
+  connection: 'connected' | 'degraded' | 'error'
+  connection_error: string | null
+  recordings: number
+  pdfs: number
+  pending_archives: number
+  checked_objects: number
+  missing_count: number
+  missing_assets: Array<{ id: string; kind: 'recording' | 'pdf'; filename: string }>
+  failed_archivals: number
+  checked_limit: number
+}
+
 export interface StorageAsset {
   id: string
   kind: 'recording' | 'pdf'

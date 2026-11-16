@@ -118,6 +118,22 @@ class R2PrivateStorage:
             ContentType=content_type,
         )
 
+    def check_connection(self) -> bool:
+        self.client.head_bucket(Bucket=self.bucket)
+        return True
+
+    def exists(self, key: str) -> bool:
+        from botocore.exceptions import ClientError
+        try:
+            self.client.head_object(Bucket=self.bucket, Key=key)
+            return True
+        except ClientError as exc:
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            code = str(exc.response.get("Error", {}).get("Code", ""))
+            if status == 404 or code in {"404", "NoSuchKey", "NotFound"}:
+                return False
+            raise
+
     def open(self, key: str):
         response = self.client.get_object(
             Bucket=self.bucket,

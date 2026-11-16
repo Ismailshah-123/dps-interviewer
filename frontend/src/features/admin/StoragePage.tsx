@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Archive, AudioLines, Download, FileText, HardDrive, Play, Search } from 'lucide-react'
+import { Archive, AudioLines, Download, FileText, HardDrive, Play, Search, RefreshCw, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -18,6 +18,13 @@ export function StoragePage() {
   const [skip, setSkip] = useState(0)
   const [selected, setSelected] = useState<StorageAsset | null>(null)
   const qc = useQueryClient()
+  const health = useQuery({
+    queryKey: ['admin-storage-health'],
+    queryFn: api.storageHealth,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    retry: 1,
+  })
   const unarchived = useQuery({
     queryKey: ['admin-storage-unarchived'],
     queryFn: () => api.unarchivedInterviews(),
@@ -29,8 +36,12 @@ export function StoragePage() {
       toast.success(`Archived ${document.filename}`)
       qc.invalidateQueries({ queryKey: ['admin-storage'] })
       qc.invalidateQueries({ queryKey: ['admin-storage-unarchived'] })
+      qc.invalidateQueries({ queryKey: ['admin-storage-health'] })
     },
-    onError: (error) => toast.error(errorMessage(error)),
+    onError: (error) => {
+      toast.error(`PDF archival failed: ${errorMessage(error)}. You can retry safely from this list.`)
+      qc.invalidateQueries({ queryKey: ['admin-storage-health'] })
+    },
   })
   const assets = useQuery({
     queryKey: ['admin-storage', { kind, q: appliedSearch, skip }],
@@ -98,38 +109,99 @@ export function StoragePage() {
         <Card className="storage-summary-card">
           <CardContent className="flex items-center gap-3 pt-5">
             <div className="rounded-xl bg-blue-50 p-3 text-blue-800"><Archive className="size-5" /></div>
-            <div><p className="text-xs text-muted-foreground">Stored items</p><p className="font-display text-2xl font-semibold tabular-nums">{assets.data?.meta.total ?? '—'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Total stored items</p><p className="font-display text-2xl font-semibold tabular-nums">{health.data ? health.data.recordings + health.data.pdfs : '—'}</p></div>
           </CardContent>
         </Card>
         <Card className="storage-summary-card">
           <CardContent className="flex items-center gap-3 pt-5">
             <div className="rounded-xl bg-indigo-50 p-3 text-indigo-800"><AudioLines className="size-5" /></div>
-            <div><p className="text-xs text-muted-foreground">Recordings shown</p><p className="font-display text-2xl font-semibold tabular-nums">{items.filter((item) => item.kind === 'recording').length}</p></div>
+            <div><p className="text-xs text-muted-foreground">Total recordings</p><p className="font-display text-2xl font-semibold tabular-nums">{health.data?.recordings ?? '—'}</p></div>
           </CardContent>
         </Card>
         <Card className="storage-summary-card">
           <CardContent className="flex items-center gap-3 pt-5">
             <div className="rounded-xl bg-emerald-50 p-3 text-emerald-800"><FileText className="size-5" /></div>
-            <div><p className="text-xs text-muted-foreground">PDFs shown</p><p className="font-display text-2xl font-semibold tabular-nums">{items.filter((item) => item.kind === 'pdf').length}</p></div>
+            <div><p className="text-xs text-muted-foreground">Total PDFs</p><p className="font-display text-2xl font-semibold tabular-nums">{health.data?.pdfs ?? '—'}</p></div>
           </CardContent>
         </Card>
       </div>
 
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-base">Storage health</CardTitle>
+            <CardDescription>Live provider check and database-to-object integrity scan. Automatically refreshes every 30 seconds.</CardDescription>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => { void health.refetch(); void assets.refetch() }} disabled={health.isFetching}>
+            <RefreshCw className={health.isFetching ? 'size-4 animate-spin' : 'size-4'} /> Refresh
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {health.isPending ? <LoadingRows rows={2} /> : health.isError ? (
+            <ErrorState error={health.error} onRetry={() => health.refetch()} />
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Provider</p>
+                  <p className="mt-1 font-semibold uppercase">{health.data.provider}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Connection</p>
+                  <p className="mt-1 flex items-center gap-2 font-semibold">
+                    {health.data.connection === 'connected' ? <CheckCircle2 className="size-4 text-emerald-600" /> : <XCircle className="size-4 text-destructive" />}
+                    {health.data.connection}
+                  </p>
+                  {health.data.connection_error && <p className="mt-1 text-xs text-destructive">{health.data.connection_error}</p>}
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Recordings / PDFs</p>
+                  <p className="mt-1 font-semibold tabular-nums">{health.data.recordings} / {health.data.pdfs}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Objects checked</p>
+                  <p className="mt-1 font-semibold tabular-nums">{health.data.checked_objects}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-sm">
+                <span className={health.data.missing_count ? 'rounded-full bg-destructive/10 px-3 py-1 text-destructive' : 'rounded-full bg-emerald-500/10 px-3 py-1 text-emerald-700'}>
+                  {health.data.missing_count} missing files
+                </span>
+                <span className="rounded-full bg-amber-500/10 px-3 py-1 text-amber-800">{health.data.pending_archives} PDFs awaiting archival</span>
+                <span className={health.data.failed_archivals ? 'rounded-full bg-destructive/10 px-3 py-1 text-destructive' : 'rounded-full bg-muted px-3 py-1 text-muted-foreground'}>
+                  {health.data.failed_archivals} failed archival attempts
+                </span>
+              </div>
+              {health.data.checked_objects >= health.data.checked_limit && <p className="text-xs text-muted-foreground">Integrity scan is limited to the latest {health.data.checked_limit} stored objects. A zero missing count applies only to the objects checked.</p>}
+              {health.data.missing_assets.length > 0 && (
+                <div className="rounded-lg border border-destructive/30 p-3">
+                  <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-destructive"><AlertTriangle className="size-4" /> Missing storage objects</p>
+                  <ul className="space-y-1 text-sm">
+                    {health.data.missing_assets.map((item) => <li key={item.id}>{item.kind.toUpperCase()} · {item.filename}</li>)}
+                  </ul>
+                  <p className="mt-2 text-xs text-muted-foreground">These database records point to files that could not be found in the configured storage provider. Do not delete records automatically.</p>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       {unarchived.data?.items.length ? (
         <Card className="border-amber-200/80">
           <CardHeader>
-            <CardTitle className="text-base">Finalized interviews awaiting PDF archival</CardTitle>
-            <CardDescription>These older finalized records do not yet have a stored PDF. Archive them here without changing their interview status.</CardDescription>
+            <CardTitle className="text-base">PDF archival needs attention</CardTitle>
+            <CardDescription>These finalized records or previously failed finalizations need a PDF archive. Retry is safe and does not duplicate an identical PDF.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {unarchived.data.items.map((item) => (
               <div key={item.interview_id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{item.candidate_name}</p>
-                  <p className="text-xs text-muted-foreground">{item.candidate_reference} · Finalized {formatDateTime(item.finalized_at)}</p>
+                  <p className="text-xs text-muted-foreground">{item.candidate_reference} · {item.finalized_at ? `Finalized ${formatDateTime(item.finalized_at)}` : 'Finalization retry required'}</p>
                 </div>
                 <Button size="sm" variant="outline" onClick={() => archive.mutate(item.interview_id)} disabled={archive.isPending}>
-                  {archive.isPending ? 'Archiving…' : 'Archive PDF'}
+                  {archive.isPending ? 'Archiving…' : 'Retry PDF archival'}
                 </Button>
               </div>
             ))}

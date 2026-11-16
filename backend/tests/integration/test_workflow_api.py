@@ -188,6 +188,17 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     pdf_assets = [item for item in library.json()["items"] if item["interview_id"] == iid]
     assert len(pdf_assets) == 1
     assert pdf_assets[0]["filename"].endswith(".pdf")
+
+    # Admin-only storage diagnostics report provider health, exact DB counts and object integrity.
+    assert (await client.get("/api/v1/admin/storage/health", headers=principal)).status_code == 403
+    storage_health = await client.get("/api/v1/admin/storage/health", headers=admin)
+    assert storage_health.status_code == 200, storage_health.text
+    health_data = storage_health.json()
+    assert health_data["connection"] == "connected"
+    assert health_data["recordings"] >= 1
+    assert health_data["pdfs"] >= 1
+    assert health_data["missing_count"] == 0
+    assert health_data["checked_objects"] >= 2
     fallback_url = await client.get(
         f"/api/v1/admin/storage/pdf/{pdf_assets[0]['id']}/url", headers=admin
     )
