@@ -38,7 +38,10 @@ export function StoragePage() {
       qc.invalidateQueries({ queryKey: ['admin-storage-unarchived'] })
       qc.invalidateQueries({ queryKey: ['admin-storage-health'] })
     },
-    onError: (error) => toast.error(errorMessage(error)),
+    onError: (error) => {
+      toast.error(`PDF archival failed: ${errorMessage(error)}. You can retry safely from this list.`)
+      qc.invalidateQueries({ queryKey: ['admin-storage-health'] })
+    },
   })
   const assets = useQuery({
     queryKey: ['admin-storage', { kind, q: appliedSearch, skip }],
@@ -198,7 +201,7 @@ export function StoragePage() {
                   <p className="text-xs text-muted-foreground">{item.candidate_reference} · Finalized {formatDateTime(item.finalized_at)}</p>
                 </div>
                 <Button size="sm" variant="outline" onClick={() => archive.mutate(item.interview_id)} disabled={archive.isPending}>
-                  {archive.isPending ? 'Archiving…' : 'Archive PDF'}
+                  {archive.isPending ? 'Archiving…' : 'Retry PDF archival'}
                 </Button>
               </div>
             ))}
