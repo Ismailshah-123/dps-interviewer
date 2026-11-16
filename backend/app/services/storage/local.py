@@ -65,6 +65,12 @@ class LocalPrivateStorage:
         import asyncio
         await asyncio.to_thread(path.write_bytes, data)
 
+    def check_connection(self) -> bool:
+        return self.root.exists() and self.root.is_dir() and self.root.stat().st_mode is not None
+
+    def exists(self, key: str) -> bool:
+        return self.path_for(key).is_file()
+
     def open(self, key: str):
         return self.path_for(key).open("rb")
 
