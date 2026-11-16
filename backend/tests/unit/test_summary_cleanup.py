@@ -34,3 +34,11 @@ def test_flags_doubtful_speaker_and_unflagged_numbers_without_rewriting():
     assert not any("Confirm speaker" in f and "painting" in f for f in flags)
     assert any("14 March, 2018" in f for f in flags)
     assert not any("Confirm date/number" in f and "Class 3" in f for f in flags)  # already flagged by the model
+
+
+
+def test_summary_prompt_requires_english_and_forbids_urdu_to_hindi_translation():
+    assert "clear, natural English" in SYSTEM_PROMPT
+    assert "Urdu must never be translated into Hindi" in SYSTEM_PROMPT
+    assert "Do not use Hindi vocabulary" in SYSTEM_PROMPT
+    assert "Devanagari script" in SYSTEM_PROMPT
