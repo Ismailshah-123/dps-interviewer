@@ -136,15 +136,14 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=other, json={"value": {"text": "tampered"}})
     assert r.status_code == 404
 
-    r = await client.post(f"/api/v1/interviews/{iid}/submit", headers=interviewer)
-    assert r.status_code == 200, r.text
+    # Only the assigned interviewer may submit; administrators operate the system but do not impersonate school reviewers or interviewers.\n    assert (await client.post(f"/api/v1/interviews/{iid}/submit", headers=admin)).status_code == 403\n    assert (await client.post(f"/api/v1/interviews/{iid}/submit", headers=principal)).status_code == 403\n    r = await client.post(f"/api/v1/interviews/{iid}/submit", headers=interviewer)\n    assert r.status_code == 200, r.text
     assert r.json()["status"] == "submitted"
 
     # After submission evidence is frozen for the interviewer.
     r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=interviewer, json={"value": {"text": "late edit"}})
     assert r.status_code == 409
 
-    # Reviewer: cannot edit, can review; correction requires remarks.
+    # Review actions belong to principal/reviewer roles; administrators cannot approve on their behalf.\n    assert (await client.post(f"/api/v1/reviews/{iid}", headers=admin, json={"action": "review"})).status_code == 403\n\n    # Reviewer: cannot edit, can review; correction requires remarks.
     r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=principal, json={"value": {"text": "x"}})
     assert r.status_code == 403
     assert (await client.post(f"/api/v1/reviews/{iid}", headers=interviewer, json={"action": "review"})).status_code == 403
