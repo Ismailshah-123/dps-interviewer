@@ -220,7 +220,7 @@ async def recording_start(interview_id: UUID, db: AsyncSession = Depends(get_db)
 
 
 @router.post("/{interview_id}/submit", response_model=InterviewOut)
-async def submit(interview_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(require_roles(Role.ADMIN.value, Role.INTERVIEWER.value))):
+async def submit(interview_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(require_roles(Role.INTERVIEWER.value))):
     interview = await get_owned_interview(interview_id, db, user)
     if interview.status not in {InterviewStatus.NEEDS_REVIEW.value, InterviewStatus.CORRECTION_REQUESTED.value}:
         raise HTTPException(status_code=409, detail="Interview must be awaiting interviewer review or correction before submission")
