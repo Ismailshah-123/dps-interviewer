@@ -190,15 +190,15 @@ export function StoragePage() {
       {unarchived.data?.items.length ? (
         <Card className="border-amber-200/80">
           <CardHeader>
-            <CardTitle className="text-base">Finalized interviews awaiting PDF archival</CardTitle>
-            <CardDescription>These older finalized records do not yet have a stored PDF. Archive them here without changing their interview status.</CardDescription>
+            <CardTitle className="text-base">PDF archival needs attention</CardTitle>
+            <CardDescription>These finalized records or previously failed finalizations need a PDF archive. Retry is safe and does not duplicate an identical PDF.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {unarchived.data.items.map((item) => (
               <div key={item.interview_id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{item.candidate_name}</p>
-                  <p className="text-xs text-muted-foreground">{item.candidate_reference} · Finalized {formatDateTime(item.finalized_at)}</p>
+                  <p className="text-xs text-muted-foreground">{item.candidate_reference} · {item.finalized_at ? `Finalized ${formatDateTime(item.finalized_at)}` : 'Finalization retry required'}</p>
                 </div>
                 <Button size="sm" variant="outline" onClick={() => archive.mutate(item.interview_id)} disabled={archive.isPending}>
                   {archive.isPending ? 'Archiving…' : 'Retry PDF archival'}
