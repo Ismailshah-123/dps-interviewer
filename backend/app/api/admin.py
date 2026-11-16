@@ -4,7 +4,7 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import require_roles
 from app.db.session import get_db
@@ -86,11 +86,29 @@ async def unarchived_finalized_interviews(
         )
         .exists()
     )
+    from uuid import UUID
+    failed_archive_rows = (await db.scalars(
+        select(AuditEvent.resource_id).where(
+            AuditEvent.action == "document.archive_failed",
+            AuditEvent.resource_type == "interview",
+            AuditEvent.resource_id.is_not(None),
+        )
+    )).all()
+    failed_interview_ids = []
+    for value in failed_archive_rows:
+        try:
+            failed_interview_ids.append(UUID(value))
+        except (TypeError, ValueError):
+            continue
+
     stmt = (
         select(Interview, Candidate)
         .join(Candidate, Candidate.id == Interview.candidate_id)
-        .where(Interview.status == "finalized", ~archived_document)
-        .order_by(Interview.finalized_at.desc())
+        .where(or_(
+            and_(Interview.status == "finalized", ~archived_document),
+            and_(Interview.status == "reviewed", Interview.id.in_(failed_interview_ids)) if failed_interview_ids else False,
+        ))
+        .order_by(Interview.finalized_at.desc(), Interview.updated_at.desc())
         .limit(limit)
     )
     if q:
@@ -123,8 +141,20 @@ async def archive_existing_finalized_interview(
     interview = await db.get(Interview, uid)
     if interview is None:
         raise HTTPException(status_code=404, detail="Interview not found")
-    if interview.status != "finalized":
-        raise HTTPException(status_code=409, detail="Only finalized interviews can be archived")
+    if interview.status == "reviewed":
+        failed_attempt = await db.scalar(
+            select(AuditEvent.id).where(
+                AuditEvent.action == "document.archive_failed",
+                AuditEvent.resource_type == "interview",
+                AuditEvent.resource_id == str(interview.id),
+            ).limit(1)
+        )
+        if failed_attempt is None:
+            raise HTTPException(status_code=409, detail="Only finalized interviews or records with a previous failed finalization can be archived")
+        from app.services.workflow import transition
+        transition(interview, "finalized")
+    elif interview.status != "finalized":
+        raise HTTPException(status_code=409, detail="Only finalized interviews or records with a previous failed finalization can be archived")
     try:
         document = await create_final_interview_pdf(db, interview, admin)
     except ValueError as exc:
