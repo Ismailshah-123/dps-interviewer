@@ -5,7 +5,7 @@ from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_roles
 from app.db.session import get_db
-from app.models.models import Candidate, ConsentRecord, Interview, InterviewForm, InterviewFormFieldValue, InterviewStatus, Role, User, InterviewTemplateVersion
+from app.models.models import Candidate, ConsentRecord, Interview, InterviewForm, InterviewFormFieldValue, InterviewStatus, Role, User, InterviewTemplateVersion, InterviewReview
 from app.schemas.common import InterviewCreate, InterviewOut, ConsentCreate, InterviewPage, InterviewStats
 from app.services.workflow import transition
 from app.services.audit import record_audit
