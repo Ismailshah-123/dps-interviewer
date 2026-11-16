@@ -82,6 +82,24 @@ export interface InterviewStats {
   by_status: Partial<Record<InterviewStatus, number>>
 }
 
+export interface InterviewAnalytics {
+  total_interviews: number
+  total_candidates: number
+  by_status: Partial<Record<InterviewStatus, number>>
+  by_grade: Array<{ grade: string; count: number }>
+  daily_activity: Array<{ date: string; interviews: number }>
+  review_actions: Record<string, number>
+  interviewer_performance: Array<{
+    interviewer_id: string
+    name: string
+    total_interviews: number
+    submitted: number
+    corrections_requested: number
+    finalized: number
+  }>
+  scope: 'system' | 'review_queue' | 'assigned'
+}
+
 export interface Recording {
   id: string
   interview_id: string
