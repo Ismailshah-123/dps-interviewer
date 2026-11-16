@@ -240,6 +240,27 @@ async def storage_health(
     failed_archives = int(await db.scalar(
         select(func.count(AuditEvent.id)).where(AuditEvent.action == "document.archive_failed")
     ) or 0)
+    failed_review_ids = []
+    failed_review_rows = (await db.scalars(
+        select(AuditEvent.resource_id).where(
+            AuditEvent.action == "document.archive_failed",
+            AuditEvent.resource_type == "interview",
+            AuditEvent.resource_id.is_not(None),
+        )
+    )).all()
+    from uuid import UUID
+    for value in failed_review_rows:
+        try:
+            failed_review_ids.append(UUID(value))
+        except (TypeError, ValueError):
+            continue
+    if failed_review_ids:
+        pending_archive_count += int(await db.scalar(
+            select(func.count(Interview.id)).where(
+                Interview.status == "reviewed",
+                Interview.id.in_(set(failed_review_ids)),
+            )
+        ) or 0)
     return {
         "provider": provider,
         "connection": connection,
