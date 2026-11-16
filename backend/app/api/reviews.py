@@ -101,6 +101,18 @@ async def review(
         except ValueError as exc:
             await db.rollback()
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except Exception as exc:
+            await db.rollback()
+            await record_audit(
+                db,
+                actor_user_id=user.id,
+                action="document.archive_failed",
+                resource_type="interview",
+                resource_id=interview.id,
+                metadata={"reason": type(exc).__name__},
+            )
+            await db.commit()
+            raise HTTPException(status_code=502, detail="Interview finalization could not archive its PDF. The operation was rolled back; an administrator can retry archival from Storage Library.") from exc
     await record_audit(
         db,
         actor_user_id=user.id,
