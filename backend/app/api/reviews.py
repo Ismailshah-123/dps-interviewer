@@ -51,7 +51,7 @@ async def review(
     interview_id: UUID,
     body: ReviewCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles(*REVIEW_ROLES, Role.ADMIN.value)),
+    user: User = Depends(require_roles(*REVIEW_ROLES)),
 ):
     interview = await db.get(Interview, interview_id)
     if not interview:
