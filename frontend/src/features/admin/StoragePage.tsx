@@ -161,7 +161,7 @@ export function StoragePage() {
             </form>
 
             {assets.isPending ? <LoadingRows rows={5} /> : assets.isError ? <ErrorState error={assets.error} onRetry={() => assets.refetch()} /> : items.length === 0 ? (
-              <EmptyState title="No stored files found" description="Files appear here after a recording is uploaded or an interview is finalized and its PDF is archived." />
+              <EmptyState title={kind === 'pdf' ? 'No archived PDFs yet' : 'No stored files found'} description={kind === 'pdf' ? 'PDFs appear here after an authorized reviewer completes principal review and finalizes the interview record. Approval alone does not archive the PDF; finalization generates and stores it in the private storage library.' : 'Recordings appear here after an interview recording has been uploaded successfully to private storage.'} />
             ) : (
               <div className="space-y-2">
                 {items.map((item) => (
