@@ -25,7 +25,7 @@ export function ReviewPanel({ interview }: { interview: Interview }) {
 
   const act = useMutation({
     mutationFn: (action: ReviewAction) => api.review(interview.id, action, remarks, recommendation),
-    onSuccess: (r) => {
+    onSuccess: (r, action) => {
       toast.success(action === 'finalize' ? 'Interview finalized and PDF archived.' : `Status: ${r.status.replace(/_/g, ' ')}`)
       setRemarks('')
       qc.invalidateQueries({ queryKey: ['interview', interview.id] })
