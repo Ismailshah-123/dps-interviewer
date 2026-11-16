@@ -132,6 +132,7 @@ export function DashboardPage() {
   const candidates = useQuery({ queryKey: ['candidates', { limit: 1 }], queryFn: () => api.candidates({ limit: 1 }) })
   const isPrincipal = user?.role === 'principal' || user?.role === 'reviewer'
   const isAdmin = user?.role === 'administrator'
+  const isInterviewer = user?.role === 'interviewer'
   const canStartInterview = isAdmin || isInterviewer
   const recent = useQuery({
     queryKey: ['interviews', 'recent', user?.role],
@@ -139,9 +140,6 @@ export function DashboardPage() {
   })
   const by = analytics.data?.by_status ?? {}
   const processingCount = sum(by, PROCESSING_STATUSES)
-  const reviewCount = isPrincipal
-    ? sum(by, ['submitted', 'principal_review', 'reviewed'])
-    : sum(by, ['needs_review', 'correction_requested'])
   const completedCount = by.finalized ?? 0
   const attentionCount = (by.failed ?? 0) + (by.correction_requested ?? 0)
   const title = isAdmin ? 'School operations overview' : isPrincipal ? 'Principal review overview' : 'Interviewer workspace'
@@ -198,7 +196,7 @@ export function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {analytics.isPending ? <LoadingRows rows={5} /> : stats.isError ? <ErrorState error={stats.error} onRetry={() => stats.refetch()} /> : <AnalyticsBars byStatus={by} />}
+            {analytics.isPending ? <LoadingRows rows={5} /> : analytics.isError ? <ErrorState error={analytics.error} onRetry={() => analytics.refetch()} /> : <AnalyticsBars byStatus={by} />}
           </CardContent>
         </Card>
         <Card>
