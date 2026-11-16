@@ -26,11 +26,15 @@ export function ReviewPanel({ interview }: { interview: Interview }) {
   const act = useMutation({
     mutationFn: (action: ReviewAction) => api.review(interview.id, action, remarks, recommendation),
     onSuccess: (r) => {
-      toast.success(`Status: ${r.status.replace(/_/g, ' ')}`)
+      toast.success(action === 'finalize' ? 'Interview finalized and PDF archived.' : `Status: ${r.status.replace(/_/g, ' ')}`)
       setRemarks('')
       qc.invalidateQueries({ queryKey: ['interview', interview.id] })
       qc.invalidateQueries({ queryKey: ['reviews', interview.id] })
       qc.invalidateQueries({ queryKey: ['interviews'] })
+      if (action === 'finalize') {
+        qc.invalidateQueries({ queryKey: ['admin-storage'] })
+        qc.invalidateQueries({ queryKey: ['admin-storage-unarchived'] })
+      }
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -73,7 +77,7 @@ export function ReviewPanel({ interview }: { interview: Interview }) {
               )}
               {s === 'reviewed' && (
                 <Button onClick={() => act.mutate('finalize')} disabled={act.isPending}>
-                  <Lock /> Finalize record
+                  <Lock /> Finalize & archive PDF
                 </Button>
               )}
             </div>
