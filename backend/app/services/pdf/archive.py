@@ -12,6 +12,7 @@ from app.models.models import (
     InterviewTemplate,
     InterviewTemplateVersion,
     StoredDocument,
+    Summary,
     User,
 )
 from app.services.audit import record_audit
@@ -76,8 +77,14 @@ async def create_final_interview_pdf(
         if interview.finalized_at
         else None,
     }
+    summary = await db.scalar(select(Summary).where(Summary.interview_id == interview.id))
+    additional_conversation = (summary.data or {}).get("additional_conversation", []) if summary else []
     data = InterviewPDFGenerator().generate(
-        "DPS Interview Assessment", candidate.reference_number, fields, meta
+        "DPS Interview Assessment",
+        candidate.reference_number,
+        fields,
+        meta,
+        additional_conversation=additional_conversation,
     )
     digest = hashlib.sha256(data).hexdigest()
 

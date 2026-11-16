@@ -20,7 +20,7 @@ def test_pdf_contains_metadata_labels_and_long_answers():
     pdf = InterviewPDFGenerator().generate("DPS Interview Assessment", "DPS-TEST-1", FIELDS, {"template_name": "Demo", "template_version": "1.0-demo", "status": "finalized", "form_revision": 2, "template_is_placeholder": True})
     assert pdf.startswith(b"%PDF")
     text = _text(pdf)
-    for expected in ("DPS-TEST-1", "1.0-demo", "finalized", "PLACEHOLDER TEMPLATE", "Not mentioned", "Entered or edited by staff", "AI-assisted documentation"):
+    for expected in ("DPS-TEST-1", "1.0-demo", "finalized", "PLACEHOLDER TEMPLATE", "Not mentioned", "Entered or edited by staff", "AI-assisted documentation", "must be reviewed by authorized staff"):
         assert expected in text, expected
     # The long answer flows onto further pages instead of being truncated.
     from pypdf import PdfReader
@@ -33,3 +33,36 @@ def test_urdu_runs_are_reshaped_but_latin_untouched():
     shaped = shape_for_pdf("ریاضی")
     assert shaped != "ریاضی"  # converted to presentation forms and visual order
     assert any("ﭐ" <= ch <= "﻿" for ch in shaped)
+
+def test_additional_conversation_supports_urdu_question_answer_and_evidence():
+    exchanges = [
+        {
+            "question": "اسکول کے اوقات کیا ہیں؟",
+            "answer": "اسکول صبح آٹھ بجے شروع ہوتا ہے۔",
+            "asked_by": "parent",
+            "answered_by": "interviewer",
+            "evidence_quotes": ["اسکول کے اوقات کیا ہیں؟"],
+        },
+        {
+            "question": "Does the child enjoy reading?",
+            "answer": "Yes, she reads every evening.",
+            "asked_by": "interviewer",
+            "answered_by": "parent",
+            "evidence_quotes": ["Yes, she reads every evening."],
+        },
+    ]
+    pdf = InterviewPDFGenerator().generate(
+        "DPS Interview Assessment",
+        "DPS-TEST-2",
+        FIELDS[:1],
+        {"status": "submitted"},
+        additional_conversation=exchanges,
+    )
+    assert pdf.startswith(b"%PDF")
+    text = _text(pdf)
+    assert "ADDITIONAL CONVERSATION" in text.upper()
+    assert "Question asked by: Parent" in text
+    assert "Answered by: Interviewer" in text
+    assert "Does the child enjoy reading?" in text
+    assert "Yes, she reads every evening." in text
+    assert "Transcript evidence:" in text

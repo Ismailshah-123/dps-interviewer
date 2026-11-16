@@ -1,8 +1,11 @@
 """Full interviewer -> principal workflow through the HTTP API, using deterministic test providers."""
+from io import BytesIO
+
 import pytest
+from pypdf import PdfReader
 
 from app.core.config import settings
-from app.services.form_extraction import DPSFormExtraction
+from app.services.form_extraction import AdditionalConversationItem, DPSFormExtraction
 
 ADMIN = {"email": "admin@dps.edu.pk", "password": "TestPassword123!"}
 PASSWORD = "Synthetic-Pass-2026!"
@@ -29,7 +32,18 @@ def deterministic_ai(monkeypatch):
 
     class DeterministicFormExtractor:
         async def extract(self, transcript, summary):
-            return DPSFormExtraction(answers=[])
+            return DPSFormExtraction(
+                answers=[],
+                additional_conversation=[
+                    AdditionalConversationItem(
+                        question="What are the school timings?",
+                        answer="The school day starts at 8:00 AM.",
+                        asked_by="parent",
+                        answered_by="interviewer",
+                        evidence_quotes=["What are the school timings?"],
+                    )
+                ],
+            )
 
     # Keep this integration test independent of external Groq credentials.
     monkeypatch.setattr("app.workers.processor.DPSFormExtractor", DeterministicFormExtractor)
@@ -68,6 +82,8 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     assert (await client.post(f"/api/v1/recordings/{iid}", headers=other, files=files)).status_code == 404
     # Reviewer cannot see an interview that has not been submitted.
     assert (await client.get(f"/api/v1/interviews/{iid}", headers=principal)).status_code == 404
+    # Reviewer mutations must enforce the same queue visibility as reads.
+    assert (await client.post(f"/api/v1/reviews/{iid}", headers=principal, json={"action": "review"})).status_code == 404
 
     r = await client.post(f"/api/v1/recordings/{iid}", headers=interviewer, files=files)
     assert r.status_code == 201, r.text
@@ -93,6 +109,12 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     assert transcript["segments"], transcript
     summary = (await client.get(f"/api/v1/summaries/{iid}", headers=interviewer)).json()
     assert summary["provider"] == "deterministic-test"
+    exchanges = summary["data"]["additional_conversation"]
+    assert len(exchanges) == 1
+    assert exchanges[0]["question"] == "What are the school timings?"
+    assert exchanges[0]["answer"] == "The school day starts at 8:00 AM."
+    assert exchanges[0]["asked_by"] == "parent"
+    assert exchanges[0]["answered_by"] == "interviewer"
 
     form = (await client.get(f"/api/v1/forms/{iid}", headers=interviewer)).json()
     fields = {f["field_id"]: f for f in form["fields"]}
@@ -103,18 +125,13 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
     assert fields["q1a_ideal_school"]["value"]["text"] == ""
     assert fields["q1a_ideal_school"]["value"]["source"] == "not_mentioned"
 
-    # Submission is blocked until every field is confirmed by the interviewer.
-    r = await client.post(f"/api/v1/interviews/{iid}/submit", headers=interviewer)
-    assert r.status_code == 409
-    assert "confirmation" in r.json()["detail"]
-
+    # Interview-level approval replaces individual field confirmations.
+    # At least one generated field remains needs_review, but the interviewer can submit
+    # after reviewing the whole interview and its additional conversation.
+    assert any(field["review_status"] == "needs_review" for field in fields.values())
     form_id = form["id"]
     r = await client.patch(f"/api/v1/forms/{form_id}/fields/interviewer_observations", headers=interviewer, json={"value": {"text": "Synthetic observation entered by interviewer."}})
     assert r.status_code == 200 and r.json()["human_edited"] is True
-    for fid in fields:
-        if fid != "interviewer_observations":
-            r = await client.post(f"/api/v1/forms/{form_id}/fields/{fid}/confirm", headers=interviewer)
-            assert r.status_code == 200 and r.json()["human_edited"] is False
     # Other interviewer cannot edit evidence on this form.
     r = await client.patch(f"/api/v1/forms/{form_id}/fields/q1a_ideal_school", headers=other, json={"value": {"text": "tampered"}})
     assert r.status_code == 404
@@ -156,6 +173,10 @@ async def test_full_review_cycle_with_correction(client, deterministic_ai):
 
     r = await client.get(f"/api/v1/forms/{iid}/pdf", headers=principal)
     assert r.status_code == 200 and r.content.startswith(b"%PDF")
+    exported_text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(r.content)).pages)
+    assert "ADDITIONAL CONVERSATION" in exported_text.upper()
+    assert "What are the school timings?" in exported_text
+    assert "The school day starts at 8:00 AM." in exported_text
     assert (await client.get(f"/api/v1/forms/{iid}/pdf", headers=other)).status_code == 404
     assert (await client.get(f"/api/v1/recordings/{iid}/download", headers=other)).status_code == 404
     assert (await client.get(f"/api/v1/recordings/{iid}/download", headers=principal)).status_code == 200

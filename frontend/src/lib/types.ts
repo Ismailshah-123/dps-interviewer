@@ -169,6 +169,15 @@ export interface StructuredSummary {
   follow_up_questions: string[]
   unclear_or_missing_information: string[]
   evidence: SummaryEvidence[]
+  additional_conversation?: AdditionalConversationItem[]
+}
+
+export interface AdditionalConversationItem {
+  question: string
+  answer: string
+  asked_by: 'interviewer' | 'parent' | 'other' | 'unclear'
+  answered_by: 'parent' | 'interviewer' | 'other' | 'unanswered' | 'unclear'
+  evidence_quotes: string[]
 }
 
 export interface Summary {
