@@ -106,7 +106,7 @@ async def interview_analytics(db: AsyncSession = Depends(get_db), user: User = D
 
     grade_rows = (await db.execute(
         _scoped(
-            select(Candidate.grade, func.count(Interview.id))
+            select(Candidate.grade, func.count(func.distinct(Candidate.id)))
             .join(Interview, Interview.candidate_id == Candidate.id),
             user,
         ).group_by(Candidate.grade)
