@@ -144,12 +144,12 @@ export function StoragePage() {
             <CardDescription>Only administrators can browse these records. Files remain private; access is streamed through authenticated endpoints.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); setAppliedSearch(search.trim()); setSkip(0) }}>
+            <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); setSelected(null); setAppliedSearch(search.trim()); setSkip(0) }}>
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search candidate or file" aria-label="Search stored files" />
               </div>
-              <Select value={kind} onValueChange={(value) => { setKind(value as 'all' | 'recording' | 'pdf'); setSkip(0) }}>
+              <Select value={kind} onValueChange={(value) => { setSelected(null); setKind(value as 'all' | 'recording' | 'pdf'); setSkip(0) }}>
                 <SelectTrigger className="w-full sm:w-40" aria-label="Filter storage type"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All files</SelectItem>
@@ -180,7 +180,7 @@ export function StoragePage() {
                     <span className="rounded-full border px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{item.kind === 'pdf' ? `PDF · v${item.version_number ?? 1}` : 'Audio'}</span>
                   </button>
                 ))}
-                <Pagination meta={assets.data!.meta} onPage={setSkip} />
+                <Pagination meta={assets.data!.meta} onPage={(nextSkip) => { setSelected(null); setSkip(nextSkip) }} />
               </div>
             )}
           </CardContent>
