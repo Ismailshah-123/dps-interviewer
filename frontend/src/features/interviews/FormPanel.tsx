@@ -46,7 +46,13 @@ function FieldEditor({ formId, field, spec, editable }: { formId: string; field:
   const rtl = containsArabicScript(text)
   const onDone = () => qc.invalidateQueries({ queryKey: ['form'] })
   const save = useMutation({ mutationFn: () => api.updateField(formId, field.field_id, text), onSuccess: () => (toast.success('Field saved'), onDone()), onError: (e) => toast.error(errorMessage(e)) })
+  const confirm = useMutation({
+    mutationFn: () => api.confirmField(formId, field.field_id),
+    onSuccess: () => (toast.success('Field marked as reviewed'), onDone()),
+    onError: (e) => toast.error(errorMessage(e)),
+  })
   const manualEmpty = field.value.source === 'manual_required' && !field.human_edited
+  const cannotConfirm = dirty || (Boolean(spec?.required) && !text.trim())
   const id = `field-${field.field_id}`
   const label = spec?.label ?? field.field_id
 
@@ -87,9 +93,22 @@ function FieldEditor({ formId, field, spec, editable }: { formId: string; field:
       {editable && (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">Last updated {formatDateTime(field.updated_at)}</span>
-          <Button size="sm" variant={dirty ? 'default' : 'outline'} disabled={!dirty || save.isPending} onClick={() => save.mutate()} aria-label={`Save field: ${label}`}>
-            {save.isPending ? <Spinner /> : <ClipboardCheck />} {save.isPending ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {field.review_status !== 'reviewed' && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={confirm.isPending || save.isPending || cannotConfirm}
+                onClick={() => confirm.mutate()}
+                title={dirty ? 'Save your changes before marking this field reviewed.' : spec?.required && !text.trim() ? 'Complete this required field before marking it reviewed.' : undefined}
+              >
+                {confirm.isPending ? <Spinner /> : <CheckCircle2 />} {confirm.isPending ? 'Confirming…' : 'Mark reviewed'}
+              </Button>
+            )}
+            <Button size="sm" variant={dirty ? 'default' : 'outline'} disabled={!dirty || save.isPending || confirm.isPending} onClick={() => save.mutate()} aria-label={`Save field: ${label}`}>
+              {save.isPending ? <Spinner /> : <ClipboardCheck />} {save.isPending ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
+            </Button>
+          </div>
         </div>
       )}
     </article>
