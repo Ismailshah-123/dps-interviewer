@@ -51,7 +51,7 @@ function FieldEditor({ formId, field, spec, editable }: { formId: string; field:
   const label = spec?.label ?? field.field_id
 
   return (
-    <article id={id} className="scroll-mt-24 border-b py-5 last:border-0" aria-label={label}>
+    <article id={`field-card-${field.field_id}`} className="scroll-mt-24 border-b py-5 last:border-0" aria-label={label}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <label htmlFor={id} className="text-sm font-semibold">
