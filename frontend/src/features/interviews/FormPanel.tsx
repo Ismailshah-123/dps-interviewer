@@ -166,7 +166,10 @@ export function FormPanel({ interview, editable, canSubmit }: { interview: Inter
     )
 
   const additionalConversation = summary.data?.data.additional_conversation ?? []
-  const completion = metrics.required ? Math.round((metrics.requiredComplete / metrics.required) * 100) : 100
+  // Never report 100% completion when template metadata is missing or the template has no required fields.
+  const completion = template.data && metrics.required
+    ? Math.round((metrics.requiredComplete / metrics.required) * 100)
+    : null
   return (
     <div className="space-y-5">
       <Card>
@@ -200,7 +203,7 @@ export function FormPanel({ interview, editable, canSubmit }: { interview: Inter
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-xs text-muted-foreground">Required completed</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">{metrics.requiredComplete}<span className="text-sm font-normal text-muted-foreground"> / {metrics.required}</span></p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">{template.data ? <>{metrics.requiredComplete}<span className="text-sm font-normal text-muted-foreground"> / {metrics.required}</span></> : '—'}</p>
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-xs text-muted-foreground">Awaiting review</p>
@@ -212,20 +215,33 @@ export function FormPanel({ interview, editable, canSubmit }: { interview: Inter
             </div>
           </div>
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-medium">Required-field completion</span>
-              <span className="tabular-nums text-muted-foreground">{completion}%</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Required field completion" aria-valuemin={0} aria-valuemax={100} aria-valuenow={completion}>
-              <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${completion}%` }} />
-            </div>
-            {metrics.missingRequired > 0 && (
-              <p className="flex items-center gap-2 text-xs text-amber-700">
-                <AlertCircle className="size-4" /> {metrics.missingRequired} required {metrics.missingRequired === 1 ? 'field is' : 'fields are'} still blank. Please check before submission.
+            {completion !== null ? (
+              <>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-medium">Required-field completion</span>
+                  <span className="tabular-nums text-muted-foreground">{completion}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Required field completion" aria-valuemin={0} aria-valuemax={100} aria-valuenow={completion}>
+                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${completion}%` }} />
+                </div>
+                {metrics.missingRequired > 0 && (
+                  <p className="flex items-center gap-2 text-xs text-amber-700">
+                    <AlertCircle className="size-4" /> {metrics.missingRequired} required {metrics.missingRequired === 1 ? 'field is' : 'fields are'} still blank. Please check before submission.
+                  </p>
+                )}
+                {metrics.required > 0 && metrics.missingRequired === 0 && (
+                  <p className="flex items-center gap-2 text-xs text-emerald-700"><CheckCircle2 className="size-4" /> All required fields have a response.</p>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {template.isError
+                  ? 'Template details could not be loaded. Required-field completion is unavailable.'
+                  : template.data ? 'This template has no required fields.' : 'Required-field completion is unavailable until template details load.'}
+                {template.isError && (
+                  <Button className="ml-2 h-auto p-0" size="sm" variant="link" onClick={() => void template.refetch()}>Retry</Button>
+                )}
               </p>
-            )}
-            {metrics.missingRequired === 0 && (
-              <p className="flex items-center gap-2 text-xs text-emerald-700"><CheckCircle2 className="size-4" /> All required fields have a response.</p>
             )}
           </div>
         </CardHeader>
