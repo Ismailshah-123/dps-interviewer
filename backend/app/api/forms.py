@@ -7,7 +7,7 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.models import Candidate, Interview, InterviewForm, InterviewFormFieldValue, InterviewTemplateVersion, Summary, Role, User
 from app.schemas.common import FormOut, FormFieldOut, FormFieldUpdate
-from app.services.pdf.generator import InterviewPDFGenerator
+from app.services.pdf.payload import build_interview_pdf_data
 from app.services.audit import record_audit
 from app.services.authorization import assert_interview_access, assert_can_edit_interview
 
@@ -62,29 +62,15 @@ async def pdf(interview_id: UUID, db: AsyncSession = Depends(get_db), user: User
     if not form: raise HTTPException(status_code=404, detail="Form not ready")
     candidate = await db.get(Candidate, interview.candidate_id)
     template = await db.get(InterviewTemplateVersion, form.template_version_id)
-    fields = []
-    values = {f.field_id:f for f in (await db.scalars(select(InterviewFormFieldValue).where(InterviewFormFieldValue.form_id == form.id))).all()}
-    for spec in template.fields:
-        item = values.get(spec["id"])
-        fields.append({"field_id": spec["id"], "label": spec.get("label", spec["id"]), "section": spec.get("section"),
-                       "value": item.value if item else {"text": "Not mentioned", "source": "not_mentioned"},
-                       "human_edited": bool(item and item.human_edited)})
+    if candidate is None or template is None:
+        raise HTTPException(status_code=404, detail="Candidate or interview template is unavailable")
     from app.models.models import InterviewTemplate
     parent = await db.get(InterviewTemplate, template.template_id)
-    meta = {"template_name": parent.name if parent else None, "template_version": template.version, "status": interview.status,
-            "form_revision": form.version_number,
-            "template_is_placeholder": bool(parent and "placeholder" in (parent.description or "").lower()),
-            "submitted_at": interview.submitted_at.strftime("%Y-%m-%d %H:%M UTC") if interview.submitted_at else None,
-            "finalized_at": interview.finalized_at.strftime("%Y-%m-%d %H:%M UTC") if interview.finalized_at else None}
+    values = (await db.scalars(
+        select(InterviewFormFieldValue).where(InterviewFormFieldValue.form_id == form.id)
+    )).all()
+    summary = await db.scalar(select(Summary).where(Summary.interview_id == interview.id))
+    data = build_interview_pdf_data(candidate, interview, form, template, parent, values, summary)
     await record_audit(db, actor_user_id=user.id, action="form.exported", resource_type="interview", resource_id=interview.id, metadata={"format":"pdf"})
     await db.commit()
-    summary = await db.scalar(select(Summary).where(Summary.interview_id == interview.id))
-    additional_conversation = (summary.data or {}).get("additional_conversation", []) if summary else []
-    data = InterviewPDFGenerator().generate(
-        "DPS Interview Assessment",
-        candidate.reference_number,
-        fields,
-        meta,
-        additional_conversation=additional_conversation,
-    )
     return Response(content=data, media_type="application/pdf", headers={"Content-Disposition":f'attachment; filename="{candidate.reference_number}-interview.pdf"'})
