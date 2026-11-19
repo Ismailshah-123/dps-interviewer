@@ -17,6 +17,6 @@ export function getFormMetrics(fields: FormField[], specs: Map<string, TemplateF
     requiredComplete: requiredFields.filter((field) => Boolean(field.value.text?.trim())).length,
     missingRequired: requiredFields.filter((field) => !field.value.text?.trim()).length,
     awaitingReview: fields.filter((field) => field.review_status !== 'reviewed').length,
-    aiDrafts: fields.filter((field) => !field.human_edited && field.value.source === 'ai_summary').length,
+    aiDrafts: fields.filter((field) => !field.human_edited && field.value.source === 'ai_summary' && Boolean(field.value.text?.trim())).length,
   }
 }
