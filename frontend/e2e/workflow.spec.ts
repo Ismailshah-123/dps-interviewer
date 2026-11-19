@@ -94,20 +94,20 @@ test('interviewer to principal workflow with real browser recording, correction 
   await expect(page.getByText('AI-generated draft')).toBeVisible()
   await page.getByRole('tab', { name: 'Interview form' }).click()
   await expect(page.getByText('Interviewer entry required')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Submit for review' })).toBeDisabled()
+  // Required-field indicators are guidance; submission is not blocked by blank fields.\n  await expect(page.getByRole('button', { name: 'Submit for review' })).toBeEnabled()
 
   // 11. Interviewer writes the manual field, confirms the rest, submits.
   await page.getByRole('textbox', { name: 'Interviewer Observations' }).fill('Synthetic observation written by the interviewer.')
   await page.getByRole('button', { name: 'Save field: Interviewer Observations' }).click()
   await expect(page.getByText('Entered / edited by staff')).toBeVisible()
-  const confirmButtons = page.getByRole('button', { name: /^Confirm field: / })
+  const confirmButtons = page.getByRole('button', { name: 'Mark reviewed' })
   while ((await confirmButtons.count()) > 0) {
     const before = await confirmButtons.count()
     await confirmButtons.first().click()
     await expect(confirmButtons).toHaveCount(before - 1)
   }
   await page.getByRole('button', { name: 'Submit for review' }).click()
-  await page.getByRole('button', { name: 'Submit', exact: true }).click()
+  await page.getByRole('button', { name: 'Submit interview', exact: true }).click()
   await expect(page.getByText('Submitted', { exact: true }).first()).toBeVisible()
   await signOut(page)
 
@@ -128,9 +128,9 @@ test('interviewer to principal workflow with real browser recording, correction 
   await page.goto(`${interviewUrl}?tab=form`)
   await page.getByRole('textbox', { name: 'Interview Overview' }).fill('Expanded synthetic overview after principal feedback.')
   await page.getByRole('button', { name: 'Save field: Interview Overview' }).click()
-  await expect(page.getByRole('button', { name: 'Resubmit' })).toBeEnabled()
-  await page.getByRole('button', { name: 'Resubmit' }).click()
-  await page.getByRole('button', { name: 'Submit', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Resubmit for review' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Resubmit for review' }).click()
+  await page.getByRole('button', { name: 'Submit interview', exact: true }).click()
   await expect(page.getByText('Submitted', { exact: true }).first()).toBeVisible()
   await signOut(page)
 
@@ -138,8 +138,8 @@ test('interviewer to principal workflow with real browser recording, correction 
   await signIn(page, PRINCIPAL)
   await page.goto(`${interviewUrl}?tab=review`)
   await page.getByRole('button', { name: 'Begin review' }).click()
-  await page.getByRole('button', { name: 'Mark documentation reviewed' }).click()
-  await page.getByRole('button', { name: 'Finalize record' }).click()
+  await page.getByRole('button', { name: 'Approve interview documentation' }).click()
+  await page.getByRole('button', { name: 'Finalize & archive PDF' }).click()
   await expect(page.getByText('Finalized', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('Please expand the interview overview.')).toBeVisible()
   const download = page.waitForEvent('download')

@@ -54,3 +54,33 @@ describe('form validation', () => {
     expect(candidateSchema.safeParse({ name: 'Synthetic Child' }).success).toBe(true)
   })
 })
+
+import { getFormMetrics } from '@/features/interviews/formMetrics'
+import type { FormField, TemplateFieldSpec } from '@/lib/types'
+
+describe('interview form metrics', () => {
+  const specs = new Map<string, TemplateFieldSpec>([
+    ['name', { id: 'name', label: 'Candidate name', required: true }],
+    ['notes', { id: 'notes', label: 'Interviewer notes', required: true, human_review: true }],
+    ['optional', { id: 'optional', label: 'Optional notes' }],
+  ])
+  const field = (field_id: string, text: string, source: FormField['value']['source'] = 'ai_summary', human_edited = false, review_status: FormField['review_status'] = 'needs_review'): FormField => ({
+    id: field_id, field_id, value: { text, source }, generated_value: null, evidence: [], review_status, human_edited, updated_at: '2026-11-19T00:00:00Z',
+  })
+
+  it('counts required completion, review state and AI drafts accurately', () => {
+    const metrics = getFormMetrics([
+      field('name', 'Synthetic Candidate'),
+      field('notes', ''),
+      field('optional', 'Additional detail', 'human', true, 'reviewed'),
+    ], specs)
+    expect(metrics).toEqual({ total: 3, required: 2, requiredComplete: 1, missingRequired: 1, awaitingReview: 2, aiDrafts: 1 })
+  })
+
+  it('handles a form with no required fields', () => {
+    const metrics = getFormMetrics([field('optional', 'Some note')], specs)
+    expect(metrics.required).toBe(0)
+    expect(metrics.requiredComplete).toBe(0)
+    expect(metrics.missingRequired).toBe(0)
+  })
+})

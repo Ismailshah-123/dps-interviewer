@@ -31,11 +31,11 @@ export function InterviewWorkspace() {
   if (interview.isPending) return <LoadingRows rows={8} />
   if (interview.isError) return <ErrorState error={interview.error} onRetry={() => interview.refetch()} />
   const i = interview.data
-  const isOwner = user?.role === 'administrator' || (user?.role === 'interviewer' && user.id === i.interviewer_id)
-  const editable = isOwner && EDITABLE_STATUSES.includes(i.status)
-  const canSubmit = isOwner && (i.status === 'needs_review' || i.status === 'correction_requested')
-  // A failed interview is recovered by an administrator retrying the failed job, not by re-recording.
-  const showRecorder = isOwner && ['draft', 'recording'].includes(i.status) && i.consent_status !== 'withdrawn'
+  // Only the assigned interviewer may operate or edit this interview. Administrators have read-only access here.
+  const isAssignedInterviewer = user?.role === 'interviewer' && user.id === i.interviewer_id
+  const editable = isAssignedInterviewer && EDITABLE_STATUSES.includes(i.status)
+  const canSubmit = isAssignedInterviewer && (i.status === 'needs_review' || i.status === 'correction_requested')
+  const showRecorder = isAssignedInterviewer && ['draft', 'recording'].includes(i.status) && i.consent_status !== 'withdrawn'
   const hasOutputs = !['draft', 'recording', 'uploading', 'uploaded', 'queued', 'transcribing', 'cancelled'].includes(i.status)
   const formReady = ['needs_review', 'submitted', 'principal_review', 'correction_requested', 'reviewed', 'finalized'].includes(i.status)
   const defaultTab = formReady ? 'form' : 'overview'
@@ -64,7 +64,7 @@ export function InterviewWorkspace() {
           </>
         }
       />
-      {i.status === 'correction_requested' && isOwner && (
+      {i.status === 'correction_requested' && isAssignedInterviewer && (
         <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           The principal requested a correction. See the remarks under <button className="underline" onClick={() => setParams({ tab: 'review' })}>Review</button>, update the form, then
           resubmit.
@@ -93,7 +93,7 @@ export function InterviewWorkspace() {
             )}
           </div>
           <div className="space-y-6 lg:col-span-2">
-            <ConsentCard interview={i} canAct={isOwner} />
+            <ConsentCard interview={i} canAct={isAssignedInterviewer} />
           </div>
         </TabsContent>
         <TabsContent value="transcript">{hasOutputs && <TranscriptPanel interview={i} editable={editable} />}</TabsContent>
